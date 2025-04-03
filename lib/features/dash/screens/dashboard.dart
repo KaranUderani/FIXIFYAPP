@@ -129,8 +129,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // Otherwise, use the current time plus 1 hour (as a reasonable default)
     final now = TimeOfDay.now();
     final TimeOfDay initialTime = TimeOfDay(
-        hour: (now.hour ) % 24,  // Add 1 hour, wrap around if needed
-        minute: (now.minute) * 5  // Round to nearest 5 minutes
+        hour: (now.hour) % 24,  // Ensure hour is within 0-23
+        minute: ((now.minute + 2.5) ~/ 5 * 5) % 60  // Round to nearest 5 minutes
     );
 
     final TimeOfDay? picked = await showTimePicker(
