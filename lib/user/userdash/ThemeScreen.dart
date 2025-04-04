@@ -10,7 +10,7 @@ class ThemeScreen extends StatelessWidget {
       ),
       body: Center(
         child: Text(
-          "Coming Soon...",
+          "Coming Soon...vedya",
           style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.grey),
         ),
       ),
