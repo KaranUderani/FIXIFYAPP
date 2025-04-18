@@ -3,9 +3,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pinput/pinput.dart';
 import 'package:flutter/services.dart';
-import 'package:fixifypartner/features/dash/screens/dashboard.dart';
-import 'package:fixifypartner/features/authentication/screens/signup_screen.dart';
-/*import 'package:fixifypartner/features/authentication/screens/login_screen.dart'; */
+import 'package:fixifypartner/partner/dash/screens/dashboard.dart';
+import 'package:fixifypartner/partner/authentication/screens/signup_screen.dart';
+/*import 'package:fixifypartner/partner/authentication/screens/login_screen.dart'; */
 
 class RegisterScreen extends StatefulWidget {
   @override

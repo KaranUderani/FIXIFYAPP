@@ -7,8 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:pinput/pinput.dart';
-import 'package:fixifypartner/features/dash/screens/dashboard.dart';
-import 'package:fixifypartner/features/authentication/screens/verificationapplied.dart';
+import 'package:fixifypartner/partner/dash/screens/dashboard.dart';
+import 'package:fixifypartner/partner/authentication/screens/verificationapplied.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({Key? key}) : super(key: key);

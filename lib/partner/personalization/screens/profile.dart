@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:fixifypartner/features/authentication/screens/login_screen.dart';
-import 'package:fixifypartner/features/personalization/screens/edit_profile_screen.dart';
-import 'package:fixifypartner/features/personalization/screens/theme_screen.dart';
-import 'package:fixifypartner/features/personalization/screens/share_explore_screen.dart';
-import 'package:fixifypartner/features/personalization/screens/rate_us_screen.dart';
-import 'package:fixifypartner/features/personalization/screens/contact_us_screen.dart';
-import 'package:fixifypartner/features/dash/screens/support_screen.dart';
+import 'package:fixifypartner/partner/authentication/screens/login_screen.dart';
+import 'package:fixifypartner/partner/personalization/screens/edit_profile_screen.dart';
+import 'package:fixifypartner/partner/personalization/screens/theme_screen.dart';
+import 'package:fixifypartner/partner/personalization/screens/share_explore_screen.dart';
+import 'package:fixifypartner/partner/personalization/screens/rate_us_screen.dart';
+import 'package:fixifypartner/partner/personalization/screens/contact_us_screen.dart';
+import 'package:fixifypartner/partner/dash/screens/support_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({Key? key}) : super(key: key);

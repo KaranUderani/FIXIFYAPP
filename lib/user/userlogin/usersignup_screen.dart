@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:pinput/pinput.dart';
-import 'package:fixifypartner/features/dash/screens/dashboard.dart';
+import 'package:fixifypartner/partner/dash/screens/dashboard.dart';
 
 class CustomerSignUpScreen extends StatefulWidget {
   const CustomerSignUpScreen({Key? key}) : super(key: key);
@@ -65,24 +65,12 @@ class _CustomerSignUpScreenState extends State<CustomerSignUpScreen> {
   Map<String, Map<String, dynamic>> enhancedLocations = {
     'Maharashtra': {
       'cities': ['Mumbai', 'Pune', 'Nagpur'],
-      'societies': {
-        'Mumbai': ['Hiranandani Gardens', 'Lodha Palava', 'Powai Plaza', 'Godrej Central'],
-        'Pune': ['Magarpatta City', 'Amanora Park', 'Blue Ridge', 'Kumar Primavera'],
-        'Nagpur': ['Empress City', 'Harmony Gardens', 'Shivaji Nagar']
-      }
     },
     'Gujarat': {
       'cities': ['Ahmedabad', 'Surat'],
-      'societies': {
-        'Ahmedabad': ['Iscon Platinum', 'Godrej Garden City', 'Shaligram Heaven', 'Sun South Park'],
-        'Surat': ['Vesu Heights', 'Apple Residency', 'New Citylight', 'South Bopal Homes']
-      }
     },
     'Delhi': {
       'cities': ['New Delhi'],
-      'societies': {
-        'New Delhi': ['DLF Phase 5', 'Vasant Kunj Apartments', 'Dwarka Sector 12', 'Commonwealth Games Village']
-      }
     }
   };
 
@@ -533,7 +521,6 @@ class _CustomerSignUpScreenState extends State<CustomerSignUpScreen> {
     await _applyForVerification();
   }
 
-  // Check verification status
   Future<void> _checkVerificationStatus() async {
     try {
       String adminUid = _auth.currentUser?.uid ?? '';
@@ -1158,34 +1145,19 @@ class _CustomerSignUpScreenState extends State<CustomerSignUpScreen> {
                 onChanged: (String? newValue) {
                   setState(() {
                     selectedCity = newValue;
-                    selectedSociety = null;
-                  });
-                },
-              ),
-              SizedBox(height: 20),
-              DropdownButtonFormField<String>(
-                value: selectedSociety,
-                decoration: _inputDecoration('Select Society'),
-                items: (selectedState != null && selectedCity != null)
-                    ? getSocieties(selectedState!, selectedCity!)
-                    .map<DropdownMenuItem<String>>((String value) {
-                  return DropdownMenuItem<String>(
-                    value: value,
-                    child: Text(value),
-                  );
-                }).toList()
-                    : [],
-                onChanged: (String? newValue) {
-                  setState(() {
-                    selectedSociety = newValue;
                   });
                 },
               ),
               SizedBox(height: 20),
               TextField(
-                controller: societyNameController,
-                decoration: _inputDecoration('Society Name/Building Name')
-                    .copyWith(prefixIcon: Icon(Icons.home)),
+                controller: societyNameController,  // Add this line
+                onChanged: (value) {
+                  setState(() {
+                    selectedSociety = value; // Store the entered value in selectedSociety
+                  });
+                },
+                decoration: _inputDecoration('Enter Society Name')
+                    .copyWith(prefixIcon: Icon(Icons.location_city)),
               ),
               SizedBox(height: 20),
               TextField(
@@ -1216,7 +1188,7 @@ class _CustomerSignUpScreenState extends State<CustomerSignUpScreen> {
                 onPressed: (selectedState != null &&
                     selectedCity != null &&
                     selectedSociety != null &&
-                    societyNameController.text.isNotEmpty &&
+                    selectedSociety!.isNotEmpty &&
                     adminflatNumberController.text.isNotEmpty)
                     ? () => setState(() => currentStep = 3)
                     : null,

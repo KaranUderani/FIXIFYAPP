@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:fixifypartner/features/authentication/screens/login_screen.dart';
+import 'package:fixifypartner/partner/authentication/screens/login_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -36,7 +36,11 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
   String? selectedCity;
   String? selectedSociety;
 
-  // Location data
+  // Dynamic location data
+  Map<String, Map<String, dynamic>> dynamicLocations = {};
+  bool isLoadingLocations = true;
+
+  // Fallback location data
   final Map<String, Map<String, dynamic>> enhancedLocations = {
     'Maharashtra': {
       'cities': ['Mumbai', 'Pune', 'Nagpur'],
@@ -67,11 +71,102 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
   bool _canResendOtp = false;
 
   @override
+  void initState() {
+    super.initState();
+    fetchSocieties();
+  }
+
+  @override
   void dispose() {
     _timer?.cancel();
     phoneController.dispose();
     otpController.dispose();
     super.dispose();
+  }
+
+  // Method to fetch societies from Firestore
+  Future<void> fetchSocieties() async {
+    setState(() {
+      isLoadingLocations = true;
+    });
+
+    try {
+      // Create a map to organize locations hierarchically
+      Map<String, Map<String, dynamic>> locations = {};
+
+      // Get all customers
+      QuerySnapshot customersSnapshot = await _firestore.collection('customers').get();
+
+      for (var doc in customersSnapshot.docs) {
+        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+
+        // Check if residenceDetails exists and has state, city, and society
+        if (data.containsKey('residenceDetails')) {
+          Map<String, dynamic> residence = data['residenceDetails'] as Map<String, dynamic>;
+
+          String state = residence['state'] ?? 'Unknown';
+          String city = residence['city'] ?? 'Unknown';
+          String society = residence['society'] ?? 'Unknown';
+
+          // Skip if any value is unknown
+          if (state == 'Unknown' || city == 'Unknown' || society == 'Unknown') continue;
+
+          // Initialize state if it doesn't exist
+          if (!locations.containsKey(state)) {
+            locations[state] = {
+              'cities': <String>{},
+              'societies': <String, Set<String>>{}
+            };
+          }
+
+          // Add city to set of cities for this state
+          (locations[state]!['cities'] as Set<String>).add(city);
+
+          // Initialize societies map for this city if needed
+          if (!(locations[state]!['societies'] as Map<String, Set<String>>).containsKey(city)) {
+            (locations[state]!['societies'] as Map<String, Set<String>>)[city] = <String>{};
+          }
+
+          // Add society to set of societies for this city
+          (locations[state]!['societies'] as Map<String, Set<String>>)[city]!.add(society);
+        }
+      }
+
+      // Convert sets to lists for the UI
+      Map<String, Map<String, dynamic>> formattedLocations = {};
+
+      locations.forEach((state, stateData) {
+        formattedLocations[state] = {
+          'cities': (stateData['cities'] as Set<String>).toList()..sort(),
+          'societies': <String, List<String>>{}
+        };
+
+        (stateData['societies'] as Map<String, Set<String>>).forEach((city, societies) {
+          (formattedLocations[state]!['societies'] as Map<String, List<String>>)[city] = societies.toList()..sort();
+        });
+      });
+
+      setState(() {
+        dynamicLocations = formattedLocations;
+        isLoadingLocations = false;
+      });
+
+      // If no locations were found, use the fallback locations
+      if (dynamicLocations.isEmpty) {
+        setState(() {
+          dynamicLocations = enhancedLocations;
+        });
+      }
+
+      print("DEBUG: Fetched ${dynamicLocations.length} states from database");
+    } catch (e) {
+      print("DEBUG: Error fetching societies: $e");
+      setState(() {
+        // Use fallback if there's an error
+        dynamicLocations = enhancedLocations;
+        isLoadingLocations = false;
+      });
+    }
   }
 
   void _startResendTimer() {
@@ -210,7 +305,7 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
         phoneNumber: phoneNumber,
         verificationCompleted: (PhoneAuthCredential credential) async {
           await _auth.signInWithCredential(credential);
-          await _checkVerificationStatus(); // Use this instead of _navigateAfterLogin
+          await _checkVerificationStatus();
         },
         verificationFailed: (FirebaseAuthException e) {
           setState(() => errorMessage = "Verification Failed: ${e.message}");
@@ -253,8 +348,6 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
 
       // After successful sign-in, check verification status
       await _checkVerificationStatus();
-
-      // Don't navigate here - let _checkVerificationStatus handle it
 
     } on FirebaseAuthException catch (e) {
       setState(() => errorMessage = "OTP Verification Failed: ${e.message}");
@@ -443,13 +536,35 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
   }
 
   Widget _buildLocationSelectors() {
+    // Use dynamicLocations instead of enhancedLocations
+    final locationsData = isLoadingLocations ? enhancedLocations : dynamicLocations;
+
     return Column(
       children: [
+        // Show loading indicator while fetching locations
+        if (isLoadingLocations)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 16.0),
+            child: Column(
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 8),
+                Text(
+                  "Loading societies...",
+                  style: TextStyle(
+                    color: Colors.blue[700],
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
         // State Selector
         DropdownButtonFormField<String>(
           value: selectedState,
           decoration: _dropdownDecoration('Select State'),
-          items: enhancedLocations.keys.map((String state) {
+          items: locationsData.keys.map((String state) {
             return DropdownMenuItem<String>(
               value: state,
               child: Text(state),
@@ -463,6 +578,7 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
               isLocationSelected = false;
             });
           },
+          isExpanded: true,
         ),
         const SizedBox(height: 16),
 
@@ -470,8 +586,8 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
         DropdownButtonFormField<String>(
           value: selectedCity,
           decoration: _dropdownDecoration('Select City'),
-          items: (selectedState != null && enhancedLocations.containsKey(selectedState))
-              ? (enhancedLocations[selectedState]!['cities'] as List<String>).map((String city) {
+          items: (selectedState != null && locationsData.containsKey(selectedState))
+              ? (locationsData[selectedState]!['cities'] as List<String>).map((String city) {
             return DropdownMenuItem<String>(
               value: city,
               child: Text(city),
@@ -487,6 +603,7 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
               isLocationSelected = false;
             });
           },
+          isExpanded: true,
         ),
         const SizedBox(height: 16),
 
@@ -495,9 +612,9 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
           value: selectedSociety,
           decoration: _dropdownDecoration('Select Your Society'),
           items: (selectedState != null && selectedCity != null &&
-              enhancedLocations.containsKey(selectedState) &&
-              enhancedLocations[selectedState]!['societies'].containsKey(selectedCity))
-              ? (enhancedLocations[selectedState]!['societies'][selectedCity] as List<String>)
+              locationsData.containsKey(selectedState) &&
+              (locationsData[selectedState]!['societies'] as Map<String, dynamic>).containsKey(selectedCity))
+              ? (locationsData[selectedState]!['societies'][selectedCity] as List<String>)
               .map((String society) {
             return DropdownMenuItem<String>(
               value: society,
@@ -513,6 +630,7 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
               isLocationSelected = selectedSociety != null;
             });
           },
+          isExpanded: true,
         ),
         const SizedBox(height: 25),
 
@@ -807,7 +925,6 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
     );
   }
 }
-
 class PreSignupScreen extends StatelessWidget {
   const PreSignupScreen({Key? key}) : super(key: key);
 

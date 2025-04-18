@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:fixifypartner/features/dash/screens/dashboard.dart';
+import 'package:fixifypartner/partner/dash/screens/dashboard.dart';
 
 class VerificationAppliedScreen extends StatelessWidget {
   @override

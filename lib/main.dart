@@ -1,5 +1,5 @@
 /*import 'package:flutter/material.dart';
-import 'package:fixifypartner/features/splash/splash_screen.dart';
+import 'package:fixifypartner/partner/splash/splash_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 
@@ -24,7 +24,7 @@ class MyApp extends StatelessWidget {
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
-import 'package:fixifypartner/features/splash/splash_screen.dart';
+import 'package:fixifypartner/partner/splash/splash_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:fixifypartner/user/userdash/HomeScreen.dart';
+import 'package:fixifypartner/user/userlogin/userregister_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
-  const OnboardingScreen({Key? key}) : super(key: key);
+  final Map<String, dynamic> customerData = {};  // Add this parameter
+   OnboardingScreen({Key? key}) : super(key: key);
 
   @override
   State<OnboardingScreen> createState() => _OnboardingScreenState();

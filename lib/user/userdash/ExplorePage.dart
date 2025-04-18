@@ -206,11 +206,11 @@ class _ExplorePageState extends State<ExplorePage> {
   void _navigateToService(String serviceName) {
     Map<String, Widget> servicePages = {
       "Plumbing": PlumbingPage(),
-      "Electrician": ElectricalPage(),
       "Home Installation": HomeInstallationPage(),
       "Carpenter": CarpentryPage(),
       "Locksmith": LocksmithPage(),
       "Painting": PaintingPage(),
+      "Electrical": ElectricalPage(),
     };
 
     if (servicePages.containsKey(serviceName)) {

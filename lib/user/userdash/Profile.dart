@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'ThemeScreen.dart';
 import 'RateUsScreen.dart';
-import 'package:fixifypartner/features/authentication/screens/login_screen.dart';
+import 'package:fixifypartner/partner/authentication/screens/login_screen.dart';
 import 'ContactUsScreen.dart';
 import 'EditProfileScreen.dart';
 import 'HomeScreen.dart';
@@ -48,6 +50,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context,
       MaterialPageRoute(builder: (context) => nextScreen),
     );
+  }
+
+  Future<void> _logout() async {
+    try {
+      // Sign out from Firebase
+      await FirebaseAuth.instance.signOut();
+
+      // Clear local customer data
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('customerData');
+      await prefs.remove('customerId');
+
+      // Navigate to login screen and remove all previous routes
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => LoginScreen()),
+            (Route<dynamic> route) => false,
+      );
+
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Logout failed: ${e.toString()}')),
+      );
+    }
   }
 
   @override
@@ -184,7 +209,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ],
         ),
       ),
-
     );
   }
 
@@ -207,12 +231,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: Text("No"),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (context) =>   LoginScreen()),
-              );
+              await _logout();
             },
             child: Text("Yes", style: TextStyle(color: Colors.red)),
           ),

@@ -1,6 +1,6 @@
 import 'package:fixifypartner/user/userlogin/userregister_screen.dart';
 import 'package:flutter/material.dart';
-import 'package:fixifypartner/features/authentication/screens/register_screen.dart';
+import 'package:fixifypartner/partner/authentication/screens/register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({Key? key}) : super(key: key);

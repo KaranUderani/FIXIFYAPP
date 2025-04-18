@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:fixifypartner/features/dash/screens/paymentsscreen.dart';
-import 'package:fixifypartner/features/personalization/screens/profile.dart';
+import 'package:fixifypartner/partner/dash/screens/paymentsscreen.dart';
+import 'package:fixifypartner/partner/personalization/screens/profile.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:pinput/pinput.dart';

@@ -1,5 +1,5 @@
 /*import 'package:flutter/material.dart';
-import 'package:fixifypartner/features/authentication/screens/login_screen.dart';
+import 'package:fixifypartner/partner/authentication/screens/login_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   @override
@@ -65,8 +65,8 @@ class _SplashScreenState extends State<SplashScreen> {
 
 
 import 'package:flutter/material.dart';
-import 'package:fixifypartner/features/dash/screens/dashboard.dart';
-import 'package:fixifypartner/features/authentication/screens/login_screen.dart';
+import 'package:fixifypartner/partner/dash/screens/dashboard.dart';
+import 'package:fixifypartner/partner/authentication/screens/login_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 
