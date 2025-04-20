@@ -338,49 +338,82 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
     });
 
     try {
-      PhoneAuthCredential credential = PhoneAuthProvider.credential(
+      final credential = PhoneAuthProvider.credential(
         verificationId: verificationId!,
         smsCode: otpController.text.trim(),
       );
 
-      // Sign in with the credential
-      UserCredential userCredential = await _auth.signInWithCredential(credential);
+      // Sign in with credential
+      final userCredential = await _auth.signInWithCredential(credential);
 
-      // After successful sign-in, check verification status
+      if (userCredential.user == null) {
+        throw FirebaseAuthException(
+          code: 'user-not-found',
+          message: 'Authentication failed',
+        );
+      }
+
+      // Check verification status after sign-in
       await _checkVerificationStatus();
 
     } on FirebaseAuthException catch (e) {
-      setState(() => errorMessage = "OTP Verification Failed: ${e.message}");
+      setState(() {
+        errorMessage = "Verification failed: ${e.message}";
+        isLoading = false;
+      });
     } catch (e) {
-      setState(() => errorMessage = "An unexpected error occurred");
-    } finally {
-      setState(() => isLoading = false);
+      setState(() {
+        errorMessage = "An unexpected error occurred";
+        isLoading = false;
+      });
     }
   }
 
+  // Fix in _checkVerificationStatus() method
   Future<void> _checkVerificationStatus() async {
     try {
-      String uid = _auth.currentUser?.uid ?? '';
-      if (uid.isEmpty) return;
+      setState(() => isLoading = true);
 
-      DocumentSnapshot doc = await _firestore.collection('customers').doc(uid).get();
-      if (doc.exists) {
-        setState(() {
-          verificationStatus = doc['verificationStatus'] ?? 'pending';
-          isVerificationApplied = true; // Always show verification status after OTP
-        });
+      final user = _auth.currentUser;
+      if (user == null) {
+        if (mounted) setState(() => isLoading = false);
+        return;
+      }
 
-        if (verificationStatus == 'approved') {
-          // Navigate to onboarding screen if approved
-          Navigator.pushReplacement(
+      final doc = await _firestore.collection('customers').doc(user.uid).get();
+      if (!doc.exists) {
+        if (mounted) setState(() => isLoading = false);
+        return;
+      }
+
+      final status = doc['verificationStatus'] as String? ?? 'pending';
+      print('VERIFICATION STATUS: $status');
+
+      // Only proceed if the widget is still mounted
+      if (!mounted) return;
+
+      // Update state first
+      setState(() {
+        verificationStatus = status;
+        isVerificationApplied = true;
+        isLoading = false;
+      });
+
+      // Then navigate if approved
+      if (status == 'approved') {
+        // Add a small delay to ensure state updates before navigation
+        await Future.delayed(Duration(milliseconds: 100));
+        if (mounted) {
+          Navigator.pushAndRemoveUntil(
             context,
-            MaterialPageRoute(builder: (context) => OnboardingScreen()),
+            MaterialPageRoute(builder: (_) => OnboardingScreen()),
+                (route) => false,
           );
         }
-        // If not approved, it will show the verification status widget
       }
     } catch (e) {
-      print("Error checking verification status: $e");
+      print('Error checking status: $e');
+      if (mounted) setState(() => isLoading = false);
     }
   }
 
@@ -444,16 +477,25 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
   }
 
   Widget _buildVerificationStatusWidget() {
+
+    if (verificationStatus == 'approved') {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('Verification approved! Redirecting...'),
+          ],
+        ),
+      );
+    }
+
     Color statusColor;
     String statusText;
     IconData statusIcon;
 
     switch (verificationStatus) {
-      case 'approved':
-        statusColor = Colors.green;
-        statusText = 'Verification Approved';
-        statusIcon = Icons.check_circle;
-        break;
       case 'rejected':
         statusColor = Colors.red;
         statusText = 'Verification Rejected';
@@ -502,18 +544,7 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
             style: const TextStyle(fontSize: 16, color: Colors.grey),
           ),
           const SizedBox(height: 20),
-          if (verificationStatus == 'approved')
-            ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  isVerificationApplied = false;
-                  isOtpSent = false;
-                });
-              },
-              style: _elevatedButtonStyle(),
-              child: const Text('Continue to Login'),
-            )
-          else if (verificationStatus == 'rejected')
+          if (verificationStatus == 'rejected')
             ElevatedButton(
               onPressed: () {
                 Navigator.pushReplacement(
@@ -743,6 +774,11 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_auth.currentUser != null) {
+      WidgetsBinding.instance?.addPostFrameCallback((_) {
+        _checkVerificationStatus();
+      });
+    }
     return Scaffold(
       backgroundColor: Colors.blue[50],
       body: SafeArea(

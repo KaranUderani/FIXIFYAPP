@@ -1,84 +1,180 @@
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:share_plus/share_plus.dart';
 import 'ThemeScreen.dart';
 import 'RateUsScreen.dart';
 import 'package:fixifypartner/partner/authentication/screens/login_screen.dart';
 import 'ContactUsScreen.dart';
 import 'EditProfileScreen.dart';
-import 'HomeScreen.dart';
-import 'ExplorePage.dart';
-import 'Bookings.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({Key? key}) : super(key: key);
+  const ProfileScreen({super.key});
+
   @override
-  _ProfileScreenState createState() => _ProfileScreenState();
+  State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  String userName = "FIXIFY";
-  String userEmail = "fixify@gmail.com";
-  String userPhone = "+91 1234567890";
-  final String appLink = "https://fixifyapp.com"; // Replace with actual app link
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final String _appLink = "https://fixify.app";
 
-  int _selectedIndex = 3; // Default to Profile tab
+  String _userName = '';
+  String _userPhone = '';
+  bool _isLoading = true;
 
-  void _onItemTapped(int index) {
-    if (index == _selectedIndex) return; // Prevent reloading the same page
+  // Making this final since it doesn't change
+  final int _selectedIndex = 3; // Default to Profile tab
 
-    Widget nextScreen;
-    switch (index) {
-      case 0:
-        nextScreen = HomeScreen();
-        break;
-      case 1:
-        nextScreen = ExplorePage();
-        break;
-      case 2:
-        nextScreen = Bookings();
-        break;
-      case 3:
-        nextScreen = ProfileScreen();
-        break;
-      default:
-        return;
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      User? currentUser = _auth.currentUser;
+      if (currentUser != null) {
+        String phoneNumber = currentUser.phoneNumber ?? '';
+
+        // Store the phone number immediately when we get it from Firebase Auth
+        setState(() {
+          _userPhone = phoneNumber;
+        });
+
+        if (phoneNumber.isNotEmpty) {
+          DocumentSnapshot userDoc = await _firestore
+              .collection('customers')
+              .doc(phoneNumber)
+              .get();
+
+          if (userDoc.exists && userDoc.data() != null) {
+            Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
+
+            setState(() {
+              _userName = userData['name']?.toString() ?? 'Partner User';
+            });
+          } else {
+            // If document doesn't exist, set a default name
+            setState(() {
+              _userName = 'Partner User';
+
+            });
+          }
+        }
+      }
+    } catch (e) {
+      // Using debugPrint instead of print for production code
+      debugPrint('Error loading user data: $e');
+      // Set default values in case of error
+      setState(() {
+        if (_userName.isEmpty) _userName = 'Partner User';
+      });
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
     }
+  }
 
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => nextScreen),
-    );
+  // Share App Function
+  void _shareApp() {
+    Share.share("Check out Fixify App! Download now: $_appLink");
   }
 
   Future<void> _logout() async {
-    try {
-      // Sign out from Firebase
-      await FirebaseAuth.instance.signOut();
+    await _auth.signOut();
+    if (!mounted) return;
 
-      // Clear local customer data
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('customerData');
-      await prefs.remove('customerId');
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (context) => LoginScreen()),
+          (route) => false,
+    );
+  }
 
-      // Navigate to login screen and remove all previous routes
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (context) => LoginScreen()),
-            (Route<dynamic> route) => false,
-      );
-
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Logout failed: ${e.toString()}')),
-      );
-    }
+  void _showLogoutConfirmation() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        contentPadding: const EdgeInsets.all(20),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.help_outline,
+              size: 50,
+              color: Colors.amber,
+            ),
+            SizedBox(height: 20),
+            Text(
+              'Are you sure about you want to',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 16),
+            ),
+            Text(
+              'Logout ?',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 10),
+            Text(
+              'You can always reschedule it.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+            ),
+            SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _logout,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: Text('LOGOUT', style: TextStyle(color: Colors.white)),
+                  ),
+                ),
+                SizedBox(width: 10),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue[800],
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: Text('CANCEL', style: TextStyle(color: Colors.white)),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Color(0xFFF5F5FF),
+      backgroundColor: const Color(0xFFF5F5FF),
       appBar: AppBar(
         title: Text(
           "Profile",
@@ -89,73 +185,80 @@ class _ProfileScreenState extends State<ProfileScreen> {
         elevation: 1,
         iconTheme: IconThemeData(color: Colors.black),
       ),
-      body: SingleChildScrollView(
-        padding: EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+      body: _isLoading
+          ? Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // Profile Header Section
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'Profile',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
             Container(
-              padding: EdgeInsets.all(20),
+              margin: EdgeInsets.symmetric(horizontal: 20),
+              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 15),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(15),
-                boxShadow: [
-                  BoxShadow(color: Colors.grey.withOpacity(0.2), blurRadius: 6),
-                ],
               ),
               child: Row(
                 children: [
                   CircleAvatar(
-                    radius: 40,
-                    backgroundColor: Colors.grey[300],
-                    child: ClipOval(
-                      child: Image.asset(
-                        "assets/images/imagefixify.png",
-                        width: 50,
-                        height: 50,
-                        fit: BoxFit.cover,
-                      ),
+                    backgroundColor: Colors.yellow[100],
+                    radius: 30,
+                    child: Image.asset(
+                      'assets/images/imagefixify.png',
+                      height: 40,
                     ),
                   ),
-                  SizedBox(width: 16),
+                  SizedBox(width: 15),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(userName, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                        SizedBox(height: 4),
-                        Text(userPhone, style: TextStyle(color: Colors.grey[600], fontSize: 16)),
+                        Text(
+                          _userName, // Now displays actual name
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        SizedBox(height: 5),
+                        Text(
+                          _userPhone, // Now displays actual phone number
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[600],
+                          ),
+                        ),
                       ],
                     ),
                   ),
                   IconButton(
-                    icon: Icon(Icons.edit, color: Colors.blue),
-                    onPressed: () async {
-                      final result = await Navigator.push(
+                    icon: Icon(Icons.edit, color: Colors.blue[800]),
+                    onPressed: () {
+                      Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => EditProfileScreen(
-                            name: userName,
-                            email: userEmail,
-                            phone: userPhone,
-                          ),
+                          builder: (context) => EditProfileScreen(),
                         ),
-                      );
-
-                      if (result != null) {
-                        setState(() {
-                          userName = result["name"];
-                          userEmail = result["email"];
-                          userPhone = result["phone"];
-                        });
-                      }
+                      ).then((_) => _loadUserData());
                     },
                   ),
                 ],
               ),
             ),
-
             SizedBox(height: 30),
 
             // Profile Menu Options
@@ -169,9 +272,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ProfileOption(
               icon: Icons.share,
               text: "Share And Explore",
-              onTap: () {
-                _shareApp();
-              },
+              onTap: _shareApp,
             ),
             ProfileOption(
               icon: Icons.star,
@@ -192,7 +293,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
             // Logout Button with Different Styling
             Container(
-              margin: EdgeInsets.symmetric(vertical: 10),
+              margin: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               width: double.infinity,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
@@ -200,44 +301,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   padding: EdgeInsets.symmetric(vertical: 14),
                 ),
-                onPressed: () {
-                  _showLogoutConfirmation(context);
-                },
+                onPressed: _showLogoutConfirmation,
                 child: Text("Logout", style: TextStyle(fontSize: 16, color: Colors.white)),
               ),
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  // Share App Function
-  void _shareApp() {
-    Share.share("Check out Fixify App! Download now: $appLink");
-  }
-
-  void _showLogoutConfirmation(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text("Logout"),
-        content: Text("Are you sure you want to log out?"),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            child: Text("No"),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              await _logout();
-            },
-            child: Text("Yes", style: TextStyle(color: Colors.red)),
-          ),
-        ],
       ),
     );
   }
@@ -249,17 +318,22 @@ class ProfileOption extends StatelessWidget {
   final String text;
   final VoidCallback onTap;
 
-  ProfileOption({required this.icon, required this.text, required this.onTap});
+  const ProfileOption({
+    super.key,
+    required this.icon,
+    required this.text,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
       child: ListTile(
         tileColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         leading: Icon(icon, color: Colors.blue, size: 28),
-        title: Text(text, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+        title: Text(text, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
         trailing: Icon(Icons.arrow_forward_ios, size: 18, color: Colors.grey),
         onTap: onTap,
       ),
