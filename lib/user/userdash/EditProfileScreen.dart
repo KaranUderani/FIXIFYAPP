@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -207,29 +206,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       setState(() {
         _isLoading = false;
       });
-    }
-  }
-
-  Future<void> _pickImage() async {
-    try {
-      final ImagePicker picker = ImagePicker();
-      final XFile? image = await picker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 512,
-        maxHeight: 512,
-        imageQuality: 80,
-      );
-
-      if (image != null) {
-        setState(() {
-          _profileImage = File(image.path);
-        });
-
-        // Here you would upload the image to storage and save the URL
-        // For simplicity, we're just keeping the file reference
-      }
-    } catch (e) {
-      _showSnackbar('Error selecting image: ${e.toString()}');
     }
   }
 
@@ -483,10 +459,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       color: primaryBlue,
                       shape: BoxShape.circle,
                       border: Border.all(color: Colors.white, width: 2),
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.camera_alt, color: Colors.white),
-                      onPressed: _pickImage,
                     ),
                   ),
                 ],

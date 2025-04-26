@@ -1,16 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-class ElectricalPage extends StatelessWidget {
-  final List<Map<String, dynamic>> electricians = [
-    {"name": "David Miller", "experience": "6 years", "rating": 4.9, "image": "assets/images/profile image.png", "phone": "123-456-7890", "address": "123 Main St, City", "type": "Professional Painter", "available": true},
-    {"name": "David Miller", "experience": "6 years", "rating": 4.9, "image": "assets/images/profile image.png", "phone": "123-456-7890", "address": "123 Main St, City", "type": "Professional Painter", "available": true},
-    {"name": "David Miller", "experience": "6 years", "rating": 4.9, "image": "assets/images/profile image.png", "phone": "123-456-7890", "address": "123 Main St, City", "type": "Professional Painter", "available": true},
-    {"name": "David Miller", "experience": "6 years", "rating": 4.9, "image": "assets/images/profile image.png", "phone": "123-456-7890", "address": "123 Main St, City", "type": "Professional Painter", "available": true},
-    {"name": "Emma Johnson", "experience": "4 years", "rating": 4.6, "image": "assets/images/profile image.png", "phone": "987-654-3210", "address": "456 Elm St, City", "type": "Freelance Painter", "available": false},
-    {"name": "Emma Johnson", "experience": "4 years", "rating": 4.6, "image": "assets/images/profile image.png", "phone": "987-654-3210", "address": "456 Elm St, City", "type": "Freelance Painter", "available": false},
-    {"name": "Emma Johnson", "experience": "4 years", "rating": 4.6, "image": "assets/images/profile image.png", "phone": "987-654-3210", "address": "456 Elm St, City", "type": "Freelance Painter", "available": false},
-    {"name": "Emma Johnson", "experience": "4 years", "rating": 4.6, "image": "assets/images/profile image.png", "phone": "987-654-3210", "address": "456 Elm St, City", "type": "Freelance Painter", "available": false},
-  ];
+class ElectricalPage extends StatefulWidget {
+  @override
+  _ElectricalPageState createState() => _ElectricalPageState();
+}
+
+class _ElectricalPageState extends State<ElectricalPage> {
+  late Stream<QuerySnapshot> _electriciansStream;
+  bool isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    // Query Firestore for users with partnerType 'Electrician'
+    _electriciansStream = FirebaseFirestore.instance
+        .collection('users')
+        .where('partnerType', isEqualTo: 'Electrician')
+        .snapshots();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -28,24 +36,42 @@ class ElectricalPage extends StatelessWidget {
       ),
       body: Padding(
         padding: EdgeInsets.all(16),
-        child: GridView.builder(
-          physics: BouncingScrollPhysics(),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            crossAxisSpacing: 16,
-            mainAxisSpacing: 16,
-            childAspectRatio: 0.8,
-          ),
-          itemCount: electricians.length,
-          itemBuilder: (context, index) {
-            return GestureDetector(
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ElectricianDetailsPage(electrician: electricians[index]),
-                ),
+        child: StreamBuilder<QuerySnapshot>(
+          stream: _electriciansStream,
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return Center(child: Text('Something went wrong'));
+            }
+
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return Center(child: CircularProgressIndicator());
+            }
+
+            if (snapshot.data == null || snapshot.data!.docs.isEmpty) {
+              return Center(child: Text('No electricians found'));
+            }
+
+            return GridView.builder(
+              physics: BouncingScrollPhysics(),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 16,
+                mainAxisSpacing: 16,
+                childAspectRatio: 0.8,
               ),
-              child: _buildElectricianCard(electricians[index]),
+              itemCount: snapshot.data!.docs.length,
+              itemBuilder: (context, index) {
+                var electricianData = snapshot.data!.docs[index].data() as Map<String, dynamic>;
+                return GestureDetector(
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ElectricianDetailsPage(electrician: electricianData),
+                    ),
+                  ),
+                  child: _buildElectricianCard(electricianData),
+                );
+              },
             );
           },
         ),
@@ -54,6 +80,12 @@ class ElectricalPage extends StatelessWidget {
   }
 
   Widget _buildElectricianCard(Map<String, dynamic> worker) {
+    // Default values if data is missing
+    String name = worker["name"] ?? "Unknown";
+    String experience = worker["experience"] ?? "Not specified";
+    double rating = worker["rating"]?.toDouble() ?? 0.0;
+    String imageUrl = worker["profileImage"] ?? "assets/images/profile image.png";
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -68,19 +100,26 @@ class ElectricalPage extends StatelessWidget {
         children: [
           CircleAvatar(
             radius: 40,
-            backgroundImage: AssetImage(worker["image"]),
+            backgroundImage: imageUrl.startsWith('http')
+                ? NetworkImage(imageUrl) as ImageProvider
+                : AssetImage(imageUrl),
+            backgroundColor: Colors.grey[300],
           ),
           SizedBox(height: 10),
-          Text(worker["name"], style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          Text(name,
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              overflow: TextOverflow.ellipsis),
           SizedBox(height: 5),
-          Text(worker["experience"], style: TextStyle(fontSize: 14, color: Colors.grey[600])),
+          Text(experience,
+              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+              overflow: TextOverflow.ellipsis),
           SizedBox(height: 10),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(Icons.star, color: Colors.amber, size: 20),
               SizedBox(width: 4),
-              Text(worker["rating"].toString(), style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              Text(rating.toString(), style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             ],
           ),
         ],
@@ -96,6 +135,18 @@ class ElectricianDetailsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Extract values with null safety
+    String name = electrician["name"] ?? "Unknown";
+    String phone = electrician["phone"] ?? "Not available";
+    String city = electrician["city"] ?? "Not specified";
+    String state = electrician["state"] ?? "";
+    String address = "$city, $state";
+    String partnerType = electrician["partnerType"] ?? "Electrician";
+    bool available = electrician["available"] ?? false;
+    double rating = electrician["rating"]?.toDouble() ?? 0.0;
+    String imageUrl = electrician["profileImage"] ?? "assets/images/profile image.png";
+    String serviceRadius = electrician["serviceRadius"] ?? "Not specified";
+
     return Scaffold(
       appBar: AppBar(
         title: Text("Electrician Details"),
@@ -108,17 +159,20 @@ class ElectricianDetailsPage extends StatelessWidget {
           children: [
             CircleAvatar(
               radius: 80,
-              backgroundImage: AssetImage(electrician["image"]),
+              backgroundImage: imageUrl.startsWith('http')
+                  ? NetworkImage(imageUrl) as ImageProvider
+                  : AssetImage(imageUrl),
+              backgroundColor: Colors.grey[300],
             ),
             SizedBox(height: 20),
-            Text(electrician["name"], style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
+            Text(name, style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
             SizedBox(height: 10),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(Icons.star, color: Colors.amber, size: 24),
                 SizedBox(width: 4),
-                Text(electrician["rating"].toString(), style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                Text(rating.toString(), style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               ],
             ),
             SizedBox(height: 10),
@@ -130,22 +184,24 @@ class ElectricianDetailsPage extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text("Phone: ${electrician["phone"]}", style: TextStyle(fontSize: 18)),
+                    Text("Phone: $phone", style: TextStyle(fontSize: 18)),
                     SizedBox(height: 8),
-                    Text("Address: ${electrician["address"]}", style: TextStyle(fontSize: 18)),
+                    Text("Location: $address", style: TextStyle(fontSize: 18)),
                     SizedBox(height: 8),
-                    Text("Type: ${electrician["type"]}", style: TextStyle(fontSize: 18)),
+                    Text("Service Area: $serviceRadius", style: TextStyle(fontSize: 18)),
+                    SizedBox(height: 8),
+                    Text("Type: $partnerType", style: TextStyle(fontSize: 18)),
                     SizedBox(height: 10),
                     Row(
                       children: [
                         Icon(
-                          electrician["available"] ? Icons.check_circle : Icons.cancel,
-                          color: electrician["available"] ? Colors.green : Colors.red,
+                          available ? Icons.check_circle : Icons.cancel,
+                          color: available ? Colors.green : Colors.red,
                           size: 30,
                         ),
                         SizedBox(width: 10),
                         Text(
-                          electrician["available"] ? "Available" : "Not Available",
+                          available ? "Available" : "Not Available",
                           style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                         ),
                       ],
@@ -156,7 +212,12 @@ class ElectricianDetailsPage extends StatelessWidget {
             ),
             SizedBox(height: 20),
             ElevatedButton(
-              onPressed: electrician["available"] ? () {} : null,
+              onPressed: available ? () {
+                // Implement booking functionality
+                ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text("Booking request sent to $name"))
+                );
+              } : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.orange[300],
                 padding: EdgeInsets.symmetric(horizontal: 50, vertical: 15),

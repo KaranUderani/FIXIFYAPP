@@ -9,6 +9,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:pinput/pinput.dart';
 import 'package:fixifypartner/partner/dash/screens/dashboard.dart';
 import 'package:fixifypartner/partner/authentication/screens/verificationapplied.dart';
+import 'package:geolocator/geolocator.dart';
+
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({Key? key}) : super(key: key);
@@ -27,6 +29,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final TextEditingController nameController = TextEditingController();
   final TextEditingController ageController = TextEditingController();
   final TextEditingController addressController = TextEditingController();
+  final TextEditingController latitudeController = TextEditingController();
+  final TextEditingController longitudeController = TextEditingController();
+
 
   String? selectedGender = 'Male';
   String? selectedState;
@@ -141,6 +146,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    latitudeController.dispose();
+    longitudeController.dispose();
     super.dispose();
   }
 
@@ -264,6 +271,49 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
   }
 
+  Future<void> _getCurrentLocation() async {
+    try {
+      setState(() => isLoading = true);
+
+      // Check and request permissions
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        _showSnackbar('Please enable location services');
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          _showSnackbar('Location permissions are denied');
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        _showSnackbar('Location permissions are permanently denied');
+        return;
+      }
+
+      // Get current position
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      // Update controllers
+      setState(() {
+        latitudeController.text = position.latitude.toStringAsFixed(6);
+        longitudeController.text = position.longitude.toStringAsFixed(6);
+      });
+
+    } catch (e) {
+      _showSnackbar('Error getting location: ${e.toString()}');
+    } finally {
+      setState(() => isLoading = false);
+    }
+  }
+
   // Form submission method
   Future<void> _submitForm() async {
     // Comprehensive input validation
@@ -305,6 +355,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
           'city': selectedCity,
           'hotspot': selectedHotspot,
           'serviceRadius': selectedRadius,
+          'latitude': double.tryParse(latitudeController.text) ?? 0.0,
+          'longitude': double.tryParse(longitudeController.text) ?? 0.0,
+          'geoPoint': GeoPoint(
+              double.tryParse(latitudeController.text) ?? 0.0,
+              double.tryParse(longitudeController.text) ?? 0.0,
+            ),
         },
         'addressProof': addressProofBase64 ?? '',
         'timestamp': FieldValue.serverTimestamp(),
@@ -812,12 +868,49 @@ class _SignUpScreenState extends State<SignUpScreen> {
             ],
           ),
         ),
+        SizedBox(height: 20),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                readOnly: true, // Make field non-editable
+                controller: latitudeController,
+                decoration: _inputDecoration('Latitude')
+                    .copyWith(prefixIcon: Icon(Icons.my_location)),
+              ),
+            ),
+            SizedBox(width: 16),
+            Expanded(
+              child: TextField(
+                readOnly: true, // Make field non-editable
+                controller: longitudeController,
+                decoration: _inputDecoration('Longitude')
+                    .copyWith(prefixIcon: Icon(Icons.my_location)),
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: 15),
+        ElevatedButton.icon(
+          onPressed: () {
+            _getCurrentLocation();
+          },
+          icon: Icon(Icons.location_searching),
+          label: Text('Get Current Location'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.blue,
+            foregroundColor: Colors.white,
+            padding: EdgeInsets.symmetric(horizontal: 50, vertical: 15),
+          ),
+        ),
         SizedBox(height: 30),
         ElevatedButton(
           onPressed: (selectedState != null &&
               selectedCity != null &&
               selectedHotspot != null &&
-              selectedRadius != null)
+              selectedRadius != null &&
+              latitudeController.text.isNotEmpty &&
+              longitudeController.text.isNotEmpty )
               ? () => setState(() => currentStep = 3)
               : null,
           style: _elevatedButtonStyle(),

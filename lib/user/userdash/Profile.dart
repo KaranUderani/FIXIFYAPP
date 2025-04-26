@@ -7,6 +7,8 @@ import 'RateUsScreen.dart';
 import 'package:fixifypartner/partner/authentication/screens/login_screen.dart';
 import 'ContactUsScreen.dart';
 import 'EditProfileScreen.dart';
+import 'shareexplore.dart';
+import 'supportScreen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -126,7 +128,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             SizedBox(height: 10),
             Text(
-              'You can always reschedule it.',
+              'You can always comeback',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 14, color: Colors.grey[600]),
             ),
@@ -272,7 +274,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ProfileOption(
               icon: Icons.share,
               text: "Share And Explore",
-              onTap: _shareApp,
+              onTap: () {
+                Navigator.push(context, MaterialPageRoute(builder: (context) => ShareExploreScreen()));
+              },
+            ),
+            ProfileOption(
+              icon: Icons.headset_mic_outlined,
+              text: 'Support',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => SupportScreen()),
+                );
+              },
             ),
             ProfileOption(
               icon: Icons.star,

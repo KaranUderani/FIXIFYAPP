@@ -54,13 +54,10 @@ class _SupportScreenState extends State<SupportScreen> {
       final user = FirebaseAuth.instance.currentUser;
       final phoneNumber = user?.phoneNumber ?? 'Unknown';
 
-      // Add to Firestore collection
-      await FirebaseFirestore.instance.collection('partner_support_queries').add({
+      await FirebaseFirestore.instance.collection('customer_support_queries').add({
         'query': _queryController.text,
-        'userId': FirebaseAuth.instance.currentUser?.uid,
         'phone': phoneNumber,
         'timestamp': FieldValue.serverTimestamp(),
-        'status': 'pending',
       });
 
       setState(() {
@@ -75,26 +72,35 @@ class _SupportScreenState extends State<SupportScreen> {
         ),
       );
     } catch (e) {
-      setState(() {
-        _isSubmitting = false;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to submit query. Please try again.'),
-          backgroundColor: Colors.red,
-        ),
-      );
       print('Error submitting query: $e');
+      // Show more specific error info
+      if (e is FirebaseException) {
+        print('Firebase error code: ${e.code}');
+        print('Firebase error message: ${e.message}');
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.message}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to submit query. Please try again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.yellow[100],
+      backgroundColor: Colors.blue[100],
       appBar: AppBar(
-        backgroundColor: Colors.yellow[100],
+        backgroundColor: Colors.blue[100],
         elevation: 0,
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: Colors.black),
@@ -158,7 +164,7 @@ class _SupportScreenState extends State<SupportScreen> {
                       child: ElevatedButton(
                         onPressed: _isSubmitting ? null : _submitQuery,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.orange,
+                          backgroundColor: Colors.greenAccent,
                           foregroundColor: Colors.white,
                           padding: EdgeInsets.symmetric(vertical: 12),
                           shape: RoundedRectangleBorder(
@@ -234,7 +240,7 @@ class _SupportScreenState extends State<SupportScreen> {
       ),
       // Add a direct contact button in the bottom right
       floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.orange,
+        backgroundColor: Colors.greenAccent,
         child: Icon(Icons.chat),
         onPressed: () {
           // Show live chat or direct contact options
@@ -266,7 +272,7 @@ class _SupportScreenState extends State<SupportScreen> {
                     ),
                     SizedBox(height: 16),
                     ListTile(
-                      leading: Icon(Icons.email, color: Colors.orange),
+                      leading: Icon(Icons.email, color: Colors.purple),
                       title: Text('Email Support'),
                       subtitle: Text('teamfixifyapplication@gmail.com'),
                       onTap: () {
@@ -276,7 +282,7 @@ class _SupportScreenState extends State<SupportScreen> {
                       },
                     ),
                     ListTile(
-                      leading: Icon(Icons.phone, color: Colors.orange),
+                      leading: Icon(Icons.phone, color: Colors.purple),
                       title: Text('Call Support'),
                       subtitle: Text('Available 9 AM - 6 PM'),
                       onTap: () {

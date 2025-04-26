@@ -120,23 +120,6 @@ class _HomeScreenState extends State<HomeScreen> {
           // Add your action here
         },
         backgroundColor: primaryBlue,
-        child: Container(
-          width: 56,
-          height: 56,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [primaryBlue, secondaryBlue],
-            ),
-          ),
-          child: const Icon(
-            Icons.add,
-            color: Colors.white,
-          ),
-        ),
-        elevation: 8,
       ),
     );
   }

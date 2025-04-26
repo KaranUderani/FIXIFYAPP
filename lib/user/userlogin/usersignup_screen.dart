@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:pinput/pinput.dart';
 import 'package:fixifypartner/partner/dash/screens/dashboard.dart';
+import 'package:geolocator/geolocator.dart';
 
 class CustomerSignUpScreen extends StatefulWidget {
   const CustomerSignUpScreen({Key? key}) : super(key: key);
@@ -27,6 +28,8 @@ class _CustomerSignUpScreenState extends State<CustomerSignUpScreen> {
   final TextEditingController adminemailController = TextEditingController();
   final TextEditingController societyNameController = TextEditingController();
   final TextEditingController adminflatNumberController = TextEditingController();
+  final TextEditingController latitudeController = TextEditingController();
+  final TextEditingController longitudeController = TextEditingController();
 
   String? selectedState;
   String? selectedCity;
@@ -102,6 +105,8 @@ class _CustomerSignUpScreenState extends State<CustomerSignUpScreen> {
     societyMemberFlatNoController.dispose();
     societyMemberPhoneController.dispose();
     societyMemberOtpController.dispose();
+    latitudeController.dispose();
+    longitudeController.dispose();
     super.dispose();
   }
 
@@ -444,6 +449,14 @@ class _CustomerSignUpScreenState extends State<CustomerSignUpScreen> {
           'society': selectedSociety,
           'societyName': societyNameController.text.trim(),
           'flatNumber': adminflatNumberController.text.trim(),
+          'location': {
+            'latitude': double.tryParse(latitudeController.text) ?? 0.0,
+            'longitude': double.tryParse(longitudeController.text) ?? 0.0,
+            'geoPoint': GeoPoint(
+              double.tryParse(latitudeController.text) ?? 0.0,
+              double.tryParse(longitudeController.text) ?? 0.0,
+            ),
+          }
         },
         'isAdmin': true,
         'societyMembers': societyMembers,
@@ -471,6 +484,14 @@ class _CustomerSignUpScreenState extends State<CustomerSignUpScreen> {
             'society': selectedSociety,
             'societyName': societyNameController.text.trim(),
             'flatNumber': member['flatNo'],
+            'location': {
+              'latitude': double.tryParse(latitudeController.text) ?? 0.0,
+              'longitude': double.tryParse(longitudeController.text) ?? 0.0,
+              'geoPoint': GeoPoint(
+                double.tryParse(latitudeController.text) ?? 0.0,
+                double.tryParse(longitudeController.text) ?? 0.0,
+              ),
+            }
           },
           'isAdmin': false,
           'adminId': adminUid, // Reference to the admin
@@ -519,6 +540,49 @@ class _CustomerSignUpScreenState extends State<CustomerSignUpScreen> {
 
     // Apply for verification
     await _applyForVerification();
+  }
+
+  Future<void> _getCurrentLocation() async {
+    try {
+      setState(() => isLoading = true);
+
+      // Check and request permissions
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        _showSnackbar('Please enable location services');
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          _showSnackbar('Location permissions are denied');
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        _showSnackbar('Location permissions are permanently denied');
+        return;
+      }
+
+      // Get current position
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      // Update controllers
+      setState(() {
+        latitudeController.text = position.latitude.toStringAsFixed(6);
+        longitudeController.text = position.longitude.toStringAsFixed(6);
+      });
+
+    } catch (e) {
+      _showSnackbar('Error getting location: ${e.toString()}');
+    } finally {
+      setState(() => isLoading = false);
+    }
   }
 
   Future<void> _checkVerificationStatus() async {
@@ -1150,6 +1214,163 @@ class _CustomerSignUpScreenState extends State<CustomerSignUpScreen> {
               ),
               SizedBox(height: 20),
               TextField(
+                controller: societyNameController,
+                onChanged: (value) {
+                  setState(() {
+                    selectedSociety = value;
+                  });
+                },
+                decoration: _inputDecoration('Enter Society Name')
+                    .copyWith(prefixIcon: Icon(Icons.location_city)),
+              ),
+              SizedBox(height: 20),
+              TextField(
+                controller: adminflatNumberController,
+                decoration: _inputDecoration('Your Flat/House Number')
+                    .copyWith(prefixIcon: Icon(Icons.apartment)),
+              ),
+              SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      readOnly: true, // Make field non-editable
+                      controller: latitudeController,
+                      decoration: _inputDecoration('Latitude')
+                          .copyWith(prefixIcon: Icon(Icons.my_location)),
+                    ),
+                  ),
+                  SizedBox(width: 16),
+                  Expanded(
+                    child: TextField(
+                      readOnly: true, // Make field non-editable
+                      controller: longitudeController,
+                      decoration: _inputDecoration('Longitude')
+                          .copyWith(prefixIcon: Icon(Icons.my_location)),
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 15),
+              ElevatedButton.icon(
+                onPressed: () {
+                  _getCurrentLocation();
+                },
+                icon: Icon(Icons.location_searching),
+                label: Text('Get Current Location'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(horizontal: 50, vertical: 15),                ),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: 30),
+        Row(
+          children: [
+            Expanded(
+              child: ElevatedButton(
+                onPressed: () => setState(() => currentStep = 1),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.grey,
+                  padding: EdgeInsets.symmetric(vertical: 15),
+                ),
+                child: Text('Back'),
+              ),
+            ),
+            SizedBox(width: 16),
+            Expanded(
+              flex: 2,
+              child: ElevatedButton(
+                onPressed: (selectedState != null &&
+                    selectedCity != null &&
+                    selectedSociety != null &&
+                    selectedSociety!.isNotEmpty &&
+                    adminflatNumberController.text.isNotEmpty  &&
+                    latitudeController.text.isNotEmpty &&
+                    longitudeController.text.isNotEmpty )
+                    ? () => setState(() => currentStep = 3)
+                    : null,
+                style: _elevatedButtonStyle().copyWith(
+                    padding: MaterialStateProperty.all(
+                        EdgeInsets.symmetric(vertical: 15))),
+                child: Text('Continue'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+ /* Widget _buildResidenceDetails() {
+    return Column(
+      children: [
+        SizedBox(height: 20),
+        Container(
+          padding: EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(15),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black12,
+                blurRadius: 10,
+                offset: Offset(0, 5),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Society Details',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              SizedBox(height: 25),
+              DropdownButtonFormField<String>(
+                value: selectedState,
+                decoration: _inputDecoration('Select State'),
+                items: states.map<DropdownMenuItem<String>>((String value) {
+                  return DropdownMenuItem<String>(
+                    value: value,
+                    child: Text(value),
+                  );
+                }).toList(),
+                onChanged: (String? newValue) {
+                  setState(() {
+                    selectedState = newValue;
+                    selectedCity = null;
+                    selectedSociety = null;
+                  });
+                },
+              ),
+              SizedBox(height: 20),
+              DropdownButtonFormField<String>(
+                value: selectedCity,
+                decoration: _inputDecoration('Select City'),
+                items: (selectedState != null)
+                    ? cities[selectedState]!
+                    .map<DropdownMenuItem<String>>((String value) {
+                  return DropdownMenuItem<String>(
+                    value: value,
+                    child: Text(value),
+                  );
+                }).toList()
+                    : [],
+                onChanged: (String? newValue) {
+                  setState(() {
+                    selectedCity = newValue;
+                  });
+                },
+              ),
+              SizedBox(height: 20),
+              TextField(
                 controller: societyNameController,  // Add this line
                 onChanged: (value) {
                   setState(() {
@@ -1202,7 +1423,7 @@ class _CustomerSignUpScreenState extends State<CustomerSignUpScreen> {
         ),
       ],
     );
-  }
+  }*/
 
   // Step 4: Society Members Widget
   // Step 4: Society Members Widget
