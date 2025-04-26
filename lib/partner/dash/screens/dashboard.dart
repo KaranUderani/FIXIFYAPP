@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:pinput/pinput.dart';
 import 'dart:async';
+import 'package:geolocator/geolocator.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({Key? key}) : super(key: key);
@@ -323,6 +324,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     String? selectedState = currentState;
     String? selectedCity = currentCity;
     String? selectedHotspot = currentHotspot;
+    List<String> radiusOptions = ['Up to 0.5 km', 'Up to 1 km'];
+    String? selectedRadius = await _getServiceRadius(_auth.currentUser?.phoneNumber ?? '');
 
     List<String> getCities(String state) {
       return (enhancedLocations[state]!['cities'] as List<dynamic>).cast<String>();
@@ -421,6 +424,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         });
                       },
                     ),
+                    SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      value: selectedRadius,
+                      decoration: InputDecoration(
+                        labelText: "Service Radius",
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                      ),
+                      items: radiusOptions.map((radius) {
+                        return DropdownMenuItem<String>(
+                          value: radius,
+                          child: Text(radius),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        setDialogState(() {
+                          selectedRadius = value;
+                        });
+                      },
+                    ),
                     SizedBox(height: 24),
                     if (!isOtpSent)
                       SizedBox(
@@ -428,15 +453,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         child: ElevatedButton(
                           onPressed: (selectedState != null &&
                               selectedCity != null &&
-                              selectedHotspot != null)
+                              selectedHotspot != null &&
+                              selectedRadius != null)
                               ? () async {
                             try {
                               User? currentUser = _auth.currentUser;
                               if (currentUser != null) {
                                 String phoneNumber = currentUser.phoneNumber ?? '';
                                 if (phoneNumber.isEmpty) {
-                                  QuerySnapshot userDocs = await _firestore.collection('users')
-                                      .where('uid', isEqualTo: currentUser.uid).get();
+                                  QuerySnapshot userDocs = await _firestore
+                                      .collection('users')
+                                      .where('uid', isEqualTo: currentUser.uid)
+                                      .get();
                                   if (userDocs.docs.isNotEmpty) {
                                     phoneNumber = userDocs.docs.first.id;
                                   }
@@ -518,8 +546,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       isOtpVerified = true;
                                     });
 
-                                    if (selectedState != null && selectedCity != null && selectedHotspot != null) {
-                                      await _updateHotspot(selectedState!, selectedCity!, selectedHotspot!);
+                                    if (selectedState != null &&
+                                        selectedCity != null &&
+                                        selectedHotspot != null &&
+                                        selectedRadius != null) {
+                                      await _updateHotspot(
+                                          selectedState!,
+                                          selectedCity!,
+                                          selectedHotspot!,
+                                          selectedRadius!
+                                      );
                                       Navigator.pop(context);
                                       _showSnackbar("Hotspot updated successfully!");
                                     }
@@ -567,7 +603,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Future<void> _updateHotspot(String state, String city, String hotspot) async {
+  Future<void> _updateHotspot(String state, String city, String hotspot, String radius) async {
     try {
       User? currentUser = _auth.currentUser;
       if (currentUser != null) {
@@ -582,13 +618,41 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }
 
         if (phoneNumber.isNotEmpty) {
-          String serviceRadius = await _getServiceRadius(phoneNumber);
+          // Get the current location details including lat/long
+          bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+          if (!serviceEnabled) {
+            _showSnackbar('Please enable location services');
+            return;
+          }
+
+          LocationPermission permission = await Geolocator.checkPermission();
+          if (permission == LocationPermission.denied) {
+            permission = await Geolocator.requestPermission();
+            if (permission == LocationPermission.denied) {
+              _showSnackbar('Location permissions are denied');
+              return;
+            }
+          }
+
+          if (permission == LocationPermission.deniedForever) {
+            _showSnackbar('Location permissions are permanently denied');
+            return;
+          }
+
+          // Get current position
+          Position position = await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.high,
+          );
+
           await _firestore.collection('users').doc(phoneNumber).update({
             'locationDetails': {
               'state': state,
               'city': city,
               'hotspot': hotspot,
-              'serviceRadius': serviceRadius,
+              'serviceRadius': radius,
+              'latitude': position.latitude,
+              'longitude': position.longitude,
+              'geoPoint': GeoPoint(position.latitude, position.longitude),
             }
           });
 

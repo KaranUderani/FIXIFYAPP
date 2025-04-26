@@ -1,24 +1,243 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:math';
 
-class PaintingPage extends StatelessWidget {
-  final List<Map<String, dynamic>> painters = [
-    {"name": "David Miller", "experience": "6 years", "rating": 4.9, "image": "assets/images/profile image.png", "phone": "123-456-7890", "address": "123 Main St, City", "type": "Professional Painter", "available": true},
-    {"name": "David Miller", "experience": "6 years", "rating": 4.9, "image": "assets/images/profile image.png", "phone": "123-456-7890", "address": "123 Main St, City", "type": "Professional Painter", "available": true},
-    {"name": "David Miller", "experience": "6 years", "rating": 4.9, "image": "assets/images/profile image.png", "phone": "123-456-7890", "address": "123 Main St, City", "type": "Professional Painter", "available": true},
-    {"name": "David Miller", "experience": "6 years", "rating": 4.9, "image": "assets/images/profile image.png", "phone": "123-456-7890", "address": "123 Main St, City", "type": "Professional Painter", "available": true},
-    {"name": "Emma Johnson", "experience": "4 years", "rating": 4.6, "image": "assets/images/profile image.png", "phone": "987-654-3210", "address": "456 Elm St, City", "type": "Freelance Painter", "available": false},
-    {"name": "Emma Johnson", "experience": "4 years", "rating": 4.6, "image": "assets/images/profile image.png", "phone": "987-654-3210", "address": "456 Elm St, City", "type": "Freelance Painter", "available": false},
-    {"name": "Emma Johnson", "experience": "4 years", "rating": 4.6, "image": "assets/images/profile image.png", "phone": "987-654-3210", "address": "456 Elm St, City", "type": "Freelance Painter", "available": false},
-    {"name": "Emma Johnson", "experience": "4 years", "rating": 4.6, "image": "assets/images/profile image.png", "phone": "987-654-3210", "address": "456 Elm St, City", "type": "Freelance Painter", "available": false},
-  ];
+class PaintingPage extends StatefulWidget {
+  @override
+  _PaintingPageState createState() => _PaintingPageState();
+}
+
+class _PaintingPageState extends State<PaintingPage> {
+  late Stream<QuerySnapshot> _paintersStream;
+  bool isLoading = true;
+  Map<String, dynamic>? currentUserData;
+  List<Map<String, dynamic>> availableInRangePainters = [];
+  List<Map<String, dynamic>> unavailableInRangePainters = [];
+  List<Map<String, dynamic>> outOfRangePainters = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCurrentUserData();
+    // Get all painters initially
+    _paintersStream = FirebaseFirestore.instance
+        .collection('users')
+        .where('partnerType', isEqualTo: 'Painter')
+        .snapshots();
+  }
+
+  // Load the current customer's location data
+  Future<void> _loadCurrentUserData() async {
+    setState(() {
+      isLoading = true;
+    });
+
+    try {
+      // Get current user ID
+      String? userId = FirebaseAuth.instance.currentUser?.uid;
+      if (userId == null) {
+        // If not found in auth, try getting from phone number
+        String? phoneNumber = FirebaseAuth.instance.currentUser?.phoneNumber;
+
+        if (phoneNumber != null) {
+          // Try to find user by phone number in customers collection
+          var querySnapshot = await FirebaseFirestore.instance
+              .collection('customers')
+              .where('phone', isEqualTo: phoneNumber)
+              .limit(1)
+              .get();
+
+          if (querySnapshot.docs.isNotEmpty) {
+            currentUserData = querySnapshot.docs.first.data() as Map<String, dynamic>;
+          }
+        }
+      } else {
+        // Get user data from customers collection
+        var docSnapshot = await FirebaseFirestore.instance
+            .collection('customers')
+            .doc(userId)
+            .get();
+
+        if (docSnapshot.exists) {
+          currentUserData = docSnapshot.data() as Map<String, dynamic>;
+        }
+      }
+    } catch (e) {
+      print('Error loading user data: $e');
+    } finally {
+      setState(() {
+        isLoading = false;
+      });
+    }
+  }
+
+  // Calculate distance between two points using Haversine formula
+  double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+    const double earthRadius = 6371; // Radius of the earth in km
+
+    double dLat = _degToRad(lat2 - lat1);
+    double dLon = _degToRad(lon2 - lon1);
+
+    double a = sin(dLat / 2) * sin(dLat / 2) +
+        cos(_degToRad(lat1)) * cos(_degToRad(lat2)) *
+            sin(dLon / 2) * sin(dLon / 2);
+
+    double c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    double distance = earthRadius * c; // Distance in km
+
+    return distance;
+  }
+
+  double _degToRad(double deg) {
+    return deg * (pi / 180);
+  }
+
+  void _filterPainters(List<QueryDocumentSnapshot> painterDocs) {
+    availableInRangePainters.clear();
+    unavailableInRangePainters.clear();
+    outOfRangePainters.clear();
+
+    if (currentUserData == null) {
+      // If no user data, put all in out of range
+      for (var doc in painterDocs) {
+        var data = doc.data() as Map<String, dynamic>;
+        outOfRangePainters.add(data);
+      }
+      return;
+    }
+
+    // Get customer location
+    double? customerLat, customerLng;
+
+    if (currentUserData!.containsKey('residenceDetails') &&
+        currentUserData!['residenceDetails'].containsKey('location')) {
+      customerLat = currentUserData!['residenceDetails']['location']['latitude']?.toDouble();
+      customerLng = currentUserData!['residenceDetails']['location']['longitude']?.toDouble();
+    } else if (currentUserData!.containsKey('locationDetails')) {
+      customerLat = currentUserData!['locationDetails']['latitude']?.toDouble();
+      customerLng = currentUserData!['locationDetails']['longitude']?.toDouble();
+    }
+
+    if (customerLat == null || customerLng == null) {
+      // If customer location not available, categorize based only on availability
+      for (var doc in painterDocs) {
+        var data = doc.data() as Map<String, dynamic>;
+        bool isAvailable = data['isAvailable'] ?? false;
+
+        if (isAvailable) {
+          availableInRangePainters.add(data);
+        } else {
+          unavailableInRangePainters.add(data);
+        }
+      }
+      return;
+    }
+
+    // Filter painters based on location and availability
+    for (var doc in painterDocs) {
+      var data = doc.data() as Map<String, dynamic>;
+      bool isAvailable = data['isAvailable'] ?? false;
+      double painterLat = 0.0;
+      double painterLng = 0.0;
+      double serviceRadiusKm = 0.5; // Default smaller value, was 5.0 before
+
+      // Extract location data
+      if (data.containsKey('locationDetails')) {
+        painterLat = data['locationDetails']['latitude']?.toDouble() ?? 0.0;
+        painterLng = data['locationDetails']['longitude']?.toDouble() ?? 0.0;
+      }
+
+      // Extract service radius
+      if (data.containsKey('serviceRadius') && data['serviceRadius'] != null) {
+        String radiusStr = data['serviceRadius'] as String;
+        print('Parsing service radius: "$radiusStr"');
+
+        // Parse radius from string like "Up to 0.5 km" or "Up to 1 km"
+        if (radiusStr.contains("0.5")) {
+          serviceRadiusKm = 0.5;
+        } else if (radiusStr.contains("1")) {
+          serviceRadiusKm = 1.0;
+        } else if (radiusStr.contains("2")) {
+          serviceRadiusKm = 2.0;
+        } else if (radiusStr.contains("5")) {
+          serviceRadiusKm = 5.0;
+        } else {
+          // Try to extract any numeric value if it doesn't match the expected patterns
+          radiusStr = radiusStr.replaceAll(RegExp(r'[^0-9.]'), '');
+          try {
+            double parsedValue = double.parse(radiusStr);
+            if (parsedValue > 0) {
+              serviceRadiusKm = parsedValue;
+            }
+          } catch (e) {
+            print('Failed to parse radius value: $e');
+            // Keep the default 0.5 km if parsing fails
+          }
+        }
+      }
+
+      double distance = calculateDistance(
+          customerLat,
+          customerLng,
+          painterLat,
+          painterLng
+      );
+
+      // Add debug printing
+      print('Painter: ${data['name']}');
+      print('Customer: $customerLat, $customerLng');
+      print('Painter: $painterLat, $painterLng');
+      print('Calculated distance: $distance km');
+      print('Service radius: $serviceRadiusKm km');
+      print('Within radius: ${distance <= serviceRadiusKm}');
+
+      // Add calculated distance to painter data
+      data['distance'] = distance.toStringAsFixed(1);
+
+      // Check if customer is within service radius
+      bool isWithinRadius = distance <= serviceRadiusKm;
+
+      // Categorize painters into three groups
+      if (isWithinRadius) {
+        if (isAvailable) {
+          availableInRangePainters.add(data);
+        } else {
+          unavailableInRangePainters.add(data);
+        }
+      } else {
+        outOfRangePainters.add(data);
+      }
+    }
+
+    // Sort all lists by distance
+    availableInRangePainters.sort((a, b) {
+      double distA = double.tryParse(a['distance'] ?? '0.0') ?? 0.0;
+      double distB = double.tryParse(b['distance'] ?? '0.0') ?? 0.0;
+      return distA.compareTo(distB);
+    });
+
+    unavailableInRangePainters.sort((a, b) {
+      double distA = double.tryParse(a['distance'] ?? '0.0') ?? 0.0;
+      double distB = double.tryParse(b['distance'] ?? '0.0') ?? 0.0;
+      return distA.compareTo(distB);
+    });
+
+    outOfRangePainters.sort((a, b) {
+      double distA = double.tryParse(a['distance'] ?? '0.0') ?? 0.0;
+      double distB = double.tryParse(b['distance'] ?? '0.0') ?? 0.0;
+      return distA.compareTo(distB);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: Text("Painters", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22)),
-        backgroundColor: Colors.brown[300],
+        title: Text("Painters",
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22)),
+        backgroundColor: Colors.deepPurple[300], // Purple color scheme for painters
         centerTitle: true,
         elevation: 4,
         leading: IconButton(
@@ -26,64 +245,392 @@ class PaintingPage extends StatelessWidget {
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: Padding(
-        padding: EdgeInsets.all(16),
-        child: GridView.builder(
-          physics: BouncingScrollPhysics(),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            crossAxisSpacing: 16,
-            mainAxisSpacing: 16,
-            childAspectRatio: 0.8,
-          ),
-          itemCount: painters.length,
-          itemBuilder: (context, index) {
-            return GestureDetector(
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => PainterDetailsPage(painter: painters[index]),
+      body: isLoading
+          ? Center(child: CircularProgressIndicator())
+          : StreamBuilder<QuerySnapshot>(
+        stream: _paintersStream,
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Center(child: Text('Something went wrong'));
+          }
+
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Center(child: CircularProgressIndicator());
+          }
+
+          if (snapshot.data == null || snapshot.data!.docs.isEmpty) {
+            return Center(child: Text('No painters found'));
+          }
+
+          // Filter painters based on location
+          _filterPainters(snapshot.data!.docs);
+
+          return SingleChildScrollView(
+            physics: BouncingScrollPhysics(),
+            padding: EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Customer location information
+                if (currentUserData != null)
+                  Container(
+                    padding: EdgeInsets.all(12),
+                    margin: EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[100],
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.location_on, color: Colors.deepPurple[300]),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            "Showing results for: ${_getCustomerAddress()}",
+                            style: TextStyle(fontSize: 14),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                // Available In Range Painters Section
+                Text(
+                  "Available (In Range) - ${availableInRangePainters.length}",
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green[700],
+                  ),
                 ),
-              ),
-              child: _buildPainterCard(painters[index]),
-            );
-          },
-        ),
+                SizedBox(height: 12),
+                availableInRangePainters.isEmpty
+                    ? Padding(
+                  padding: EdgeInsets.symmetric(vertical: 20),
+                  child: Center(
+                    child: Text("No available painters in your area"),
+                  ),
+                )
+                    : ListView.builder(
+                  shrinkWrap: true,
+                  physics: NeverScrollableScrollPhysics(),
+                  itemCount: availableInRangePainters.length,
+                  itemBuilder: (context, index) {
+                    return _buildPainterListItem(
+                      availableInRangePainters[index],
+                      status: "Available",
+                    );
+                  },
+                ),
+
+                SizedBox(height: 24),
+
+                // Unavailable In Range Painters Section
+                Text(
+                  "Unavailable (In Range) - ${unavailableInRangePainters.length}",
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.red[700],
+                  ),
+                ),
+                SizedBox(height: 12),
+                unavailableInRangePainters.isEmpty
+                    ? Padding(
+                  padding: EdgeInsets.symmetric(vertical: 20),
+                  child: Center(
+                    child: Text("No unavailable painters in your area"),
+                  ),
+                )
+                    : ListView.builder(
+                  shrinkWrap: true,
+                  physics: NeverScrollableScrollPhysics(),
+                  itemCount: unavailableInRangePainters.length,
+                  itemBuilder: (context, index) {
+                    return _buildPainterListItem(
+                      unavailableInRangePainters[index],
+                      status: "Unavailable",
+                    );
+                  },
+                ),
+
+                SizedBox(height: 24),
+
+                // Out of Range Painters Section
+                Text(
+                  "Out of Range - ${outOfRangePainters.length}",
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey[700],
+                  ),
+                ),
+                SizedBox(height: 12),
+                outOfRangePainters.isEmpty
+                    ? Padding(
+                  padding: EdgeInsets.symmetric(vertical: 20),
+                  child: Center(
+                    child: Text("No painters out of range"),
+                  ),
+                )
+                    : ListView.builder(
+                  shrinkWrap: true,
+                  physics: NeverScrollableScrollPhysics(),
+                  itemCount: outOfRangePainters.length,
+                  itemBuilder: (context, index) {
+                    return _buildPainterListItem(
+                      outOfRangePainters[index],
+                      status: "Out of Range",
+                    );
+                  },
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
 
-  Widget _buildPainterCard(Map<String, dynamic> painter) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(color: Colors.grey.shade300, blurRadius: 10, spreadRadius: 2, offset: Offset(-2, -2)),
-          BoxShadow(color: Colors.grey.shade400, blurRadius: 10, spreadRadius: 2, offset: Offset(2, 2)),
-        ],
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          CircleAvatar(
-            radius: 40,
-            backgroundImage: AssetImage(painter["image"]),
-          ),
-          SizedBox(height: 10),
-          Text(painter["name"], style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          SizedBox(height: 5),
-          Text(painter["experience"], style: TextStyle(fontSize: 14, color: Colors.grey[600])),
-          SizedBox(height: 10),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+  String _getCustomerAddress() {
+    if (currentUserData == null) return "Unknown location";
+
+    String city = "";
+    String state = "";
+
+    if (currentUserData!.containsKey('residenceDetails')) {
+      city = currentUserData!['residenceDetails']['city'] ?? "";
+      state = currentUserData!['residenceDetails']['state'] ?? "";
+    } else if (currentUserData!.containsKey('locationDetails')) {
+      city = currentUserData!['locationDetails']['city'] ?? "";
+      state = currentUserData!['locationDetails']['state'] ?? "";
+    }
+
+    return city.isNotEmpty ? "$city, $state" : "Unknown location";
+  }
+
+  Widget _buildPainterListItem(Map<String, dynamic> painter,
+      {required String status}) {
+    // Extract data with defaults
+    String name = painter["name"] ?? "Unknown";
+    String experience = painter["experience"] ?? "Not specified";
+    String imageUrl = painter["profileImage"] ??
+        "assets/images/profile image.png";
+    String distance = painter["distance"] ?? "Unknown";
+    bool isVerified = painter["verificationStatus"] == "verified";
+    bool isAvailable = status == "Available";
+
+    // Set color based on status
+    Color statusColor;
+    Color bgColor;
+
+    switch (status) {
+      case "Available":
+        statusColor = Colors.green[800]!;
+        bgColor = Colors.green[100]!;
+        break;
+      case "Unavailable":
+        statusColor = Colors.red[800]!;
+        bgColor = Colors.red[100]!;
+        break;
+      case "Out of Range":
+        statusColor = Colors.grey[800]!;
+        bgColor = Colors.grey[100]!;
+        break;
+      default:
+        statusColor = Colors.grey[800]!;
+        bgColor = Colors.grey[100]!;
+    }
+
+    return Card(
+      margin: EdgeInsets.only(bottom: 12),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: InkWell(
+        onTap: () =>
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) =>
+                    PainterDetailsPage(painter: painter),
+              ),
+            ),
+        child: Padding(
+          padding: EdgeInsets.all(12),
+          child: Column(
             children: [
-              Icon(Icons.star, color: Colors.amber, size: 20),
-              SizedBox(width: 4),
-              Text(painter["rating"].toString(), style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Profile Image with Verification Badge
+                  Stack(
+                    children: [
+                      CircleAvatar(
+                        radius: 30,
+                        backgroundImage: imageUrl.startsWith('http')
+                            ? NetworkImage(imageUrl) as ImageProvider
+                            : AssetImage(imageUrl),
+                        backgroundColor: Colors.grey[300],
+                      ),
+                      if (isVerified)
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: Container(
+                            padding: EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: Colors.deepPurple[300],
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 2),
+                            ),
+                            child: Icon(Icons.verified, size: 16,
+                                color: Colors.white),
+                          ),
+                        ),
+                    ],
+                  ),
+                  SizedBox(width: 16),
+
+                  // Info
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Text(
+                                      name,
+                                      style: TextStyle(fontSize: 20,
+                                          fontWeight: FontWeight.bold),
+                                    ),
+                                    if (isVerified) SizedBox(width: 4),
+                                    if (isVerified)
+                                      Icon(Icons.verified, size: 16,
+                                          color: Colors.deepPurple[300]),
+                                  ],
+                                ),
+                                SizedBox(height: 4),
+                                Text(
+                                  experience,
+                                  style: TextStyle(
+                                      fontSize: 10, color: Colors.grey[600]),
+                                ),
+                              ],
+                            ),
+                            if (isAvailable)
+                              ElevatedButton(
+                                onPressed: () {
+                                  // Book this painter
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text(
+                                          "Booking request sent to $name"))
+                                  );
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.deepPurple[300],
+                                  padding: EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 6),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                child: Text(
+                                  "Book",
+                                  style: TextStyle(
+                                      fontSize: 12, color: Colors.white),
+                                ),
+                              )
+                            else if (status == "Unavailable")
+                              ElevatedButton(
+                                onPressed: () {
+                                  // Book for later option
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text(
+                                          "Added $name to your future bookings"))
+                                  );
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.deepPurple[200],
+                                  padding: EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 6),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                child: Text(
+                                  "Book for Later",
+                                  style: TextStyle(
+                                      fontSize: 12, color: Colors.white),
+                                ),
+                              ),
+                          ],
+                        ),
+                        SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            // Distance info
+                            Row(
+                              children: [
+                                Icon(Icons.location_on, size: 14,
+                                    color: Colors.deepPurple[700]),
+                                SizedBox(width: 4),
+                                Text(
+                                  "$distance km away",
+                                  style: TextStyle(
+                                      fontSize: 13, color: Colors.deepPurple[700]),
+                                ),
+                              ],
+                            ),
+
+                            // Status indicator
+                            Container(
+                              padding: EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: bgColor,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                status,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: statusColor,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              // Verification badge text
+              if (isVerified)
+                Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Row(
+                    children: [
+                      Icon(Icons.verified_user, size: 14, color: Colors.deepPurple[300]),
+                      SizedBox(width: 4),
+                      Text(
+                        "Verified Professional",
+                        style: TextStyle(fontSize: 12, color: Colors.deepPurple[300]),
+                      ),
+                    ],
+                  ),
+                ),
             ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -96,32 +643,93 @@ class PainterDetailsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Extract values with null safety
+    String name = painter["name"] ?? "Unknown";
+    String partnerType = painter["partnerType"] ?? "Painter";
+    bool available = painter["isAvailable"] ?? false;
+    bool isVerified = painter["verificationStatus"] == "verified";
+    String verificationDate = painter["verificationDate"] ?? "";
+
+    // Store the actual rating value
+    double? ratingValue = painter["rating"]?.toDouble();
+
+    // Display text for rating - either the actual value or "no ratings available"
+    String ratingDisplay = ratingValue != null ? ratingValue.toString() : "no ratings available";
+
+    String imageUrl = painter["profileImage"] ?? "assets/images/profile image.png";
+    String distance = painter["distance"] ?? "Unknown";
+    String experience = painter["experience"] ?? "Not specified";
+
     return Scaffold(
       appBar: AppBar(
         title: Text("Painter Details"),
-        backgroundColor: Colors.brown[300],
+        backgroundColor: Colors.deepPurple[300],
       ),
       body: SingleChildScrollView(
         padding: EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            CircleAvatar(
-              radius: 80,
-              backgroundImage: AssetImage(painter["image"]),
+            // Profile Image with Verification Badge
+            Stack(
+              alignment: Alignment.bottomRight,
+              children: [
+                CircleAvatar(
+                  radius: 80,
+                  backgroundImage: imageUrl.startsWith('http')
+                      ? NetworkImage(imageUrl) as ImageProvider
+                      : AssetImage(imageUrl),
+                  backgroundColor: Colors.grey[300],
+                ),
+                if (isVerified)
+                  Container(
+                    padding: EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.deepPurple[300],
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
+                    ),
+                    child: Icon(Icons.verified, size: 24, color: Colors.white),
+                  ),
+              ],
             ),
             SizedBox(height: 20),
-            Text(painter["name"], style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
+
+            // Name with Verification Badge
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(name, style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
+                if (isVerified) SizedBox(width: 8),
+                if (isVerified) Icon(Icons.verified, size: 24, color: Colors.deepPurple[300]),
+              ],
+            ),
+
             SizedBox(height: 10),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(Icons.star, color: Colors.amber, size: 24),
                 SizedBox(width: 4),
-                Text(painter["rating"].toString(), style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                Text(ratingDisplay,
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               ],
             ),
             SizedBox(height: 10),
+
+            // Distance chip
+            if (distance != "Unknown")
+              Chip(
+                backgroundColor: Colors.deepPurple[100],
+                avatar: Icon(Icons.location_on, size: 20, color: Colors.deepPurple[700]),
+                label: Text(
+                  "$distance km away",
+                  style: TextStyle(color: Colors.deepPurple[700], fontWeight: FontWeight.bold),
+                ),
+              ),
+
+            SizedBox(height: 20),
+
             Card(
               elevation: 4,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
@@ -130,22 +738,43 @@ class PainterDetailsPage extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text("Phone: ${painter["phone"]}", style: TextStyle(fontSize: 18)),
-                    SizedBox(height: 8),
-                    Text("Address: ${painter["address"]}", style: TextStyle(fontSize: 18)),
-                    SizedBox(height: 8),
-                    Text("Type: ${painter["type"]}", style: TextStyle(fontSize: 18)),
-                    SizedBox(height: 10),
+                    // Verification Status
+                    if (isVerified)
+                      Column(
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.verified_user, color: Colors.deepPurple[300]),
+                              SizedBox(width: 12),
+                              Text(
+                                "Verified Professional",
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.deepPurple[300],
+                                ),
+                              ),
+                            ],
+                          ),
+                          Divider(height: 24),
+                        ],
+                      ),
+
+                    _buildInfoRow(Icons.work, "Experience", experience),
+                    Divider(height: 24),
+                    _buildInfoRow(Icons.category, "Specialization", partnerType),
+
+                    SizedBox(height: 16),
                     Row(
                       children: [
                         Icon(
-                          painter["available"] ? Icons.check_circle : Icons.cancel,
-                          color: painter["available"] ? Colors.green : Colors.red,
+                          available ? Icons.check_circle : Icons.cancel,
+                          color: available ? Colors.green : Colors.red,
                           size: 30,
                         ),
                         SizedBox(width: 10),
                         Text(
-                          painter["available"] ? "Available" : "Not Available",
+                          available ? "Available" : "Not Available",
                           style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                         ),
                       ],
@@ -155,18 +784,63 @@ class PainterDetailsPage extends StatelessWidget {
               ),
             ),
             SizedBox(height: 20),
+
+
             ElevatedButton(
-              onPressed: painter["available"] ? () {} : null,
+              onPressed: available ? () {
+                // Implement booking functionality
+                ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text("Booking request sent to $name"))
+                );
+              } : () {
+                // Book for later functionality
+                ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text("Added $name to your future bookings"))
+                );
+              },
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.brown[300],
+                backgroundColor: available ? Colors.deepPurple[300] : Colors.deepPurple[200],
                 padding: EdgeInsets.symmetric(horizontal: 50, vertical: 15),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
-              child: Text("Book Painter", style: TextStyle(fontSize: 18, color: Colors.white)),
+              child: Text(
+                available ? "Book Painter" : "Book for Later",
+                style: TextStyle(fontSize: 18, color: Colors.white),
+              ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildInfoRow(IconData icon, String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 22, color: Colors.deepPurple[700]),
+        SizedBox(width: 12),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey[600],
+              ),
+            ),
+            SizedBox(height: 2),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

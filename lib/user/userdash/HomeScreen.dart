@@ -115,12 +115,6 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          // Add your action here
-        },
-        backgroundColor: primaryBlue,
-      ),
     );
   }
 

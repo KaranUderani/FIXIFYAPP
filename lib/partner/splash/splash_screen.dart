@@ -67,28 +67,56 @@ class _SplashScreenState extends State<SplashScreen> {
 import 'package:flutter/material.dart';
 import 'package:fixifypartner/partner/dash/screens/dashboard.dart';
 import 'package:fixifypartner/partner/authentication/screens/login_screen.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-
+import 'package:fixifypartner/user/userdash/HomeScreen.dart';
 
 class SplashScreen extends StatefulWidget {
   @override
   _SplashScreenState createState() => _SplashScreenState();
 }
-
 class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    Future.delayed(Duration(seconds: 3), () {
+    Future.delayed(Duration(seconds: 3), () async {
       FirebaseAuth auth = FirebaseAuth.instance;
       User? user = auth.currentUser;
 
       if (user != null) {
-        // User is logged in, navigate to Dashboard
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => DashboardScreen()),
-        );
+        // Check if user exists in customers collection
+        final customerDoc = await FirebaseFirestore.instance
+            .collection('customers')
+            .doc(user.uid)
+            .get();
+
+        if (customerDoc.exists) {
+          // User is a customer
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => HomeScreen()),
+          );
+        } else {
+          // Check if user exists in service providers collection
+          final providerDoc = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .get();
+
+          if (providerDoc.exists) {
+            // User is a service provider
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => DashboardScreen()),
+            );
+          } else {
+            // User not found in either collection - handle accordingly
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => LoginScreen()),
+            );
+          }
+        }
       } else {
         // User not logged in, navigate to Login Screen
         Navigator.pushReplacement(
@@ -96,7 +124,7 @@ class _SplashScreenState extends State<SplashScreen> {
           MaterialPageRoute(builder: (context) => LoginScreen()),
         );
       }
-    }); // Added missing closing bracket here
+    });
   }
 
   @override
