@@ -3,6 +3,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fixifypartner/Booking_management/bookingpage.dart';
 import 'dart:math';
+import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:fixifypartner/Booking_management/bookingpage.dart';
+import 'dart:math';
 
 class ElectricalPage extends StatefulWidget {
   @override
@@ -651,7 +656,7 @@ class _ElectricalPageState extends State<ElectricalPage> {
     );
   }
 }
-// The ElectricianDetailsPage class remains unchanged
+
 class ElectricianDetailsPage extends StatelessWidget {
   final Map<String, dynamic> electrician;
 
@@ -801,26 +806,51 @@ class ElectricianDetailsPage extends StatelessWidget {
             ),
             SizedBox(height: 20),
 
-
-            ElevatedButton(
-              onPressed: available ? () {
-                // Implement booking functionality
-                ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text("Booking request sent to $name"))
-                );
-              } : () {
-                // Book for later functionality
-                ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text("Added $name to your future bookings"))
+            // Updated booking buttons based on availability
+            available
+                ? ElevatedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => BookingPage(
+                      serviceProvider: electrician,
+                      isAvailable: true,
+                      serviceType: 'Electrician',
+                    ),
+                  ),
                 );
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: available ? Colors.orange[300] : Colors.blue[300],
+                backgroundColor: Colors.orange[300],
                 padding: EdgeInsets.symmetric(horizontal: 50, vertical: 15),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
               child: Text(
-                available ? "Book Electrician" : "Book for Later",
+                "Book Now",
+                style: TextStyle(fontSize: 18, color: Colors.white),
+              ),
+            )
+                : ElevatedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => BookingPage(
+                      serviceProvider: electrician,
+                      isAvailable: false,
+                      serviceType: 'Electrician',
+                    ),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue[300],
+                padding: EdgeInsets.symmetric(horizontal: 50, vertical: 15),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              child: Text(
+                "Schedule Booking",
                 style: TextStyle(fontSize: 18, color: Colors.white),
               ),
             ),

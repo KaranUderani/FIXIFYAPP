@@ -21,7 +21,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _otpController = TextEditingController();
 
-  // For displaying residence details
+  // User details
   String _flatNumber = "";
   String _societyName = "";
   String _state = "";
@@ -37,10 +37,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   int _resendTimer = 60;
   Timer? _timer;
   bool _canResendOtp = false;
-
-  // New properties for admin/member distinction
   bool _isAdmin = false;
-  Map<String, dynamic> _residenceDetails = {};
+  String? _adminId;
 
   // Theme colors
   static const Color primaryBlue = Color(0xFF1E88E5);
@@ -90,46 +88,98 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     });
   }
 
+  // Consistent function to retrieve user document
+  Future<DocumentSnapshot?> getUserDocument() async {
+    User? currentUser = FirebaseAuth.instance.currentUser;
+
+    if (currentUser == null) return null;
+
+    String phoneNumber = currentUser.phoneNumber ?? '';
+
+    if (phoneNumber.isNotEmpty) {
+      // Remove +91 prefix if present
+      String documentId = phoneNumber.replaceAll('+91', '');
+
+      // Try direct document access first
+      DocumentSnapshot directDoc = await FirebaseFirestore.instance
+          .collection('customers')
+          .doc(documentId)
+          .get();
+
+      if (directDoc.exists) {
+        return directDoc;
+      }
+
+      // If direct access fails, try querying by phone field
+      QuerySnapshot querySnapshot = await FirebaseFirestore.instance
+          .collection('customers')
+          .where('phone', isEqualTo: phoneNumber)
+          .limit(1)
+          .get();
+
+      if (querySnapshot.docs.isNotEmpty) {
+        return querySnapshot.docs.first;
+      }
+    }
+
+    return null;
+  }
   Future<void> _loadUserData() async {
     setState(() => _isLoading = true);
 
     try {
+      DocumentSnapshot? userDoc = await getUserDocument();
+
       User? currentUser = _auth.currentUser;
       if (currentUser != null) {
         // Get phone number from Firebase Auth
         String? phoneNumber = currentUser.phoneNumber;
         if (phoneNumber != null) {
           _originalPhone = phoneNumber.replaceAll('+91', '');
-          _phoneController.text = _originalPhone ?? '';
-        } else {
-          _originalPhone = '';
-          _phoneController.text = '';
-        }
-
-        // Load user data from Firestore using phone number as document ID
-        DocumentSnapshot userDoc = await _firestore.collection('customers')
-            .doc(_originalPhone)
-            .get();
-
-        if (userDoc.exists) {
-          Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
-
-          setState(() {
-            _nameController.text = userData['name'] ?? '';
-            _emailController.text = userData['email'] ?? '';
-            _originalEmail = userData['email'];
-            _isAdmin = userData['isAdmin'] ?? false;
-
-            // Load residence details if available
-            _flatNumber = userData['flatNumber'] ?? '';
-            _societyName = userData['societyName'] ?? '';
-            _city = userData['city'] ?? '';
-            _state = userData['state'] ?? '';
-          });
+          _phoneController.text = _originalPhone!;
         }
       }
+
+      if (userDoc != null && userDoc.exists) {
+        Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
+
+        // Debug output to check what fields are available
+        print('User data fields: ${userData.keys.join(', ')}');
+
+        // Load basic profile info
+        setState(() {
+          _nameController.text = userData['name']?.toString() ?? '';
+          _emailController.text = userData['email']?.toString() ?? '';
+          _originalEmail = userData['email']?.toString();
+          _isAdmin = userData['isAdmin'] ?? false;
+          _adminId = userData['adminId']?.toString();
+        });
+
+        // Load residence details with flexible field access
+        if (userData.containsKey('residenceDetails')) {
+          Map<String, dynamic> residenceDetails =
+          userData['residenceDetails'] as Map<String, dynamic>;
+
+          // Debug output for residence details
+          print('Residence details fields: ${residenceDetails.keys.join(', ')}');
+
+          setState(() {
+            _flatNumber = residenceDetails['flatNumber']?.toString() ?? '';
+
+            // Try both field names
+            _societyName = residenceDetails['societyName']?.toString() ??
+                residenceDetails['society']?.toString() ?? '';
+
+            _city = residenceDetails['city']?.toString() ?? '';
+            _state = residenceDetails['state']?.toString() ?? '';
+          });
+        }
+      } else {
+        _showSnackbar('User profile not found. Please create a new profile.');
+      }
     } catch (e) {
-      _showSnackbar('Error loading profile data');
+      print('Error loading profile data: $e');
+      _showSnackbar('Error loading profile data: $e');
     } finally {
       setState(() => _isLoading = false);
     }
@@ -149,30 +199,36 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         String phoneNumber = _phoneController.text.trim();
         String formattedPhone = '+91$phoneNumber';
 
+        // Get the actual document ID first
+        DocumentSnapshot? userDoc = await getUserDocument();
+        if (userDoc == null) {
+          throw Exception("User document not found");
+        }
+
+        String documentId = userDoc.id; // This gets the actual Firestore document ID
+
         // Prepare update data
         Map<String, dynamic> updateData = {
           'name': _nameController.text.trim(),
           'email': _emailController.text.trim(),
-          'lastUpdated': FieldValue.serverTimestamp(),
-        };
-
-        // If phone number changed and verified, we need to create a new document
-        if (phoneNumber != _originalPhone && _isPhoneVerified) {
-          // Create new document with new phone number
-          await _firestore.collection('customers').doc(phoneNumber).set({
-            ...updateData,
-            'phone': formattedPhone,
-            'isAdmin': _isAdmin,
+          'phone': formattedPhone, // Make sure phone is stored with country code
+          'isAdmin': _isAdmin,
+          'adminId': _adminId,
+          'residenceDetails': {
             'flatNumber': _flatNumber,
             'societyName': _societyName,
             'city': _city,
             'state': _state,
-          });
+          },
+          'lastUpdated': FieldValue.serverTimestamp(),
+        };
 
-          // Optionally delete old document
-          await _firestore.collection('customers').doc(_originalPhone).delete();
+        // Handle phone number change if needed
+        if (phoneNumber != _originalPhone && _isPhoneVerified) {
+          // First create new document with new phone
+          await _firestore.collection('customers').doc(phoneNumber).set(updateData);
 
-          // Update phone number in Firebase Auth
+          // Then update the Firebase Auth phone number
           await currentUser.updatePhoneNumber(
             PhoneAuthProvider.credential(
               verificationId: _verificationId!,
@@ -180,17 +236,27 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             ),
           );
 
-          // Update original phone reference
+          // Delete old document only after successful auth update
+          await _firestore.collection('customers').doc(documentId).delete();
+
           _originalPhone = phoneNumber;
         } else {
-          // Just update existing document
-          await _firestore.collection('customers').doc(_originalPhone).update(updateData);
+          // Just update the existing document using its actual ID
+          await _firestore.collection('customers').doc(documentId).update(updateData);
+
+          // Add detailed logging
+          print("Document updated successfully: $documentId");
         }
 
         _showSnackbar('Profile updated successfully');
         Navigator.pop(context);
       }
     } catch (e) {
+      print('Error saving profile: $e');
+      if (e is FirebaseException) {
+        print('Firebase error code: ${e.code}');
+        print('Firebase error message: ${e.message}');
+      }
       _showSnackbar('Error saving profile: $e');
     } finally {
       setState(() => _isLoading = false);
@@ -244,7 +310,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
       await _auth.signInWithCredential(credential);
       setState(() => _isPhoneVerified = true);
-
       _showSnackbar("Phone number verified successfully");
       _otpController.clear();
     } on FirebaseAuthException catch (e) {
@@ -295,9 +360,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             TextButton(
-              onPressed: _canResendOtp && !_isLoading
-                  ? _sendOtp
-                  : null,
+              onPressed: _canResendOtp && !_isLoading ? _sendOtp : null,
               child: Text(
                 _canResendOtp ? 'Resend OTP' : 'Resend in $_resendTimer sec',
                 style: TextStyle(
@@ -400,8 +463,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 ),
                 const SizedBox(width: 8),
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
                     color: lightBlue,
                     borderRadius: BorderRadius.circular(12),
@@ -418,13 +480,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             ),
             const SizedBox(height: 16),
             _buildInfoRow("Flat/House Number", _flatNumber),
-            if (_isAdmin) ...[
-              _buildInfoRow("Society Name", _societyName),
-              _buildInfoRow("City", _city),
-              _buildInfoRow("State", _state),
-            ] else if (_societyName.isNotEmpty) ...[
-              _buildInfoRow("Society", _societyName),
-            ],
+            _buildInfoRow("Society Name", _societyName),
+            _buildInfoRow("City", _city),
+            _buildInfoRow("State", _state),
           ],
         ),
       ),
@@ -445,7 +503,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         ),
         backgroundColor: Colors.white,
         elevation: 0,
-        iconTheme: IconThemeData(color: primaryBlue),
+        iconTheme: const IconThemeData(color: primaryBlue),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -470,6 +528,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       shape: BoxShape.circle,
                       border: Border.all(color: Colors.white, width: 2),
                     ),
+                    child: const Icon(Icons.edit, color: Colors.white, size: 20),
                   ),
                 ],
               ),
