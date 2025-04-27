@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:fixifypartner/Booking_management/bookingpage.dart';
 import 'dart:math';
 
 class ElectricalPage extends StatefulWidget {
@@ -531,50 +532,57 @@ class _ElectricalPageState extends State<ElectricalPage> {
                                 ),
                               ],
                             ),
+
                             if (isAvailable)
                               ElevatedButton(
                                 onPressed: () {
-                                  // Book this electrician
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text(
-                                          "Booking request sent to $name"))
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => BookingPage(
+                                        serviceProvider: electrician,
+                                        isAvailable: true,
+                                        serviceType: 'Electrician',
+                                      ),
+                                    ),
                                   );
                                 },
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.orange[300],
-                                  padding: EdgeInsets.symmetric(
-                                      horizontal: 12, vertical: 6),
+                                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                 ),
                                 child: Text(
                                   "Book",
-                                  style: TextStyle(
-                                      fontSize: 12, color: Colors.white),
+                                  style: TextStyle(fontSize: 12, color: Colors.white),
                                 ),
                               )
                             else if (status == "Unavailable")
                               ElevatedButton(
                                 onPressed: () {
-                                  // Book for later option
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text(
-                                          "Added $name to your future bookings"))
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => BookingPage(
+                                        serviceProvider: electrician,
+                                        isAvailable: false,
+                                        serviceType: 'Electrician',
+                                      ),
+                                    ),
                                   );
                                 },
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.blue[300],
-                                  padding: EdgeInsets.symmetric(
-                                      horizontal: 12, vertical: 6),
+                                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                 ),
                                 child: Text(
                                   "Book for Later",
-                                  style: TextStyle(
-                                      fontSize: 12, color: Colors.white),
+                                  style: TextStyle(fontSize: 12, color: Colors.white),
                                 ),
                               ),
                           ],

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'CarpentryPage.dart';
 import 'ElectricalPage.dart';
 import 'HomeInstallationPage.dart';
@@ -12,7 +14,11 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  String searchQuery = "";
+  // Location data
+  String societyName = "";
+  String city = "";
+  String state = "";
+  bool isLoading = true;
 
   // Define theme colors
   static const Color primaryBlue = Color(0xFF1E88E5);
@@ -24,19 +30,55 @@ class _HomePageState extends State<HomePage> {
   final List<Map<String, dynamic>> services = [
     {"title": "ELECTRICIANS", "icon": "assets/icons/electrical.png", "page": ElectricalPage()},
     {"title": "PLUMBERS", "icon": "assets/icons/plumbing.png", "page": PlumbingPage()},
-    {"title": "HOME INSTALLATION", "icon": "assets/icons/home_installation.png", "page": HomeInstallationPage()},
+    {"title": "HOME INSTALLATION", "icon": "assets/icons/home_installation.jpg", "page": HomeInstallationPage()},
     {"title": "PAINTER", "icon": "assets/icons/painting.png", "page": PaintingPage()},
     {"title": "LOCKSMITH", "icon": "assets/icons/locksmith.png", "page": LocksmithPage()},
     {"title": "CARPENTERS", "icon": "assets/icons/carpentry.png", "page": CarpentryPage()},
   ];
 
   @override
-  Widget build(BuildContext context) {
-    // Filter services based on search query
-    List<Map<String, dynamic>> filteredServices = services.where((service) {
-      return service["title"].toLowerCase().contains(searchQuery.toLowerCase());
-    }).toList();
+  void initState() {
+    super.initState();
+    fetchUserLocation();
+  }
 
+  // Fetch user location data from Firebase
+  Future<void> fetchUserLocation() async {
+    try {
+      User? currentUser = FirebaseAuth.instance.currentUser;
+
+      if (currentUser != null) {
+        DocumentSnapshot userDoc = await FirebaseFirestore.instance
+            .collection('customers')
+            .doc(currentUser.uid)
+            .get();
+
+        if (userDoc.exists) {
+          Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
+
+          // Access nested data using the structure shown in your Firebase screenshot
+          if (userData.containsKey('residenceDetails')) {
+            Map<String, dynamic> residenceDetails = userData['residenceDetails'];
+
+            setState(() {
+              societyName = residenceDetails['societyName'] ?? "";
+              city = residenceDetails['city'] ?? "";
+              state = residenceDetails['state'] ?? "";
+              isLoading = false;
+            });
+          }
+        }
+      }
+    } catch (e) {
+      print('Error fetching user location: $e');
+      setState(() {
+        isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: backgroundWhite,
       body: SafeArea(
@@ -126,13 +168,14 @@ class _HomePageState extends State<HomePage> {
 
             SizedBox(height: 20),
 
-            // Search Bar
+            // Location Display
             Padding(
               padding: EdgeInsets.symmetric(horizontal: 20),
               child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(30),
+                  borderRadius: BorderRadius.circular(15),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withOpacity(0.05),
@@ -141,20 +184,39 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ],
                 ),
-                child: TextField(
-                  onChanged: (value) {
-                    setState(() {
-                      searchQuery = value;
-                    });
-                  },
-                  decoration: InputDecoration(
-                    prefixIcon: Icon(Icons.search, color: primaryBlue),
-                    suffixIcon: Icon(Icons.mic, color: primaryBlue),
-                    hintText: "Search For Services...",
-                    hintStyle: TextStyle(color: Colors.grey.shade400),
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(vertical: 15),
-                  ),
+                child: Row(
+                  children: [
+                    Icon(Icons.location_on, color: primaryBlue),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: isLoading
+                          ? Text(
+                        "Loading location...",
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      )
+                          : RichText(
+                        text: TextSpan(
+                          style: TextStyle(
+                            color: Colors.grey.shade800,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          children: [
+                            TextSpan(
+                              text: societyName,
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: primaryBlue,
+                              ),
+                            ),
+                            TextSpan(text: ", $city, $state"),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -195,34 +257,12 @@ class _HomePageState extends State<HomePage> {
             Expanded(
               child: Padding(
                 padding: EdgeInsets.symmetric(horizontal: 20),
-                child: filteredServices.isEmpty
-                    ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.search_off,
-                        size: 70,
-                        color: Colors.grey.shade400,
-                      ),
-                      SizedBox(height: 15),
-                      Text(
-                        "No services found",
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.grey.shade600,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-                    : GridView.count(
+                child: GridView.count(
                   crossAxisCount: 2,
                   mainAxisSpacing: 15,
                   crossAxisSpacing: 15,
                   childAspectRatio: 0.9,
-                  children: filteredServices.map((service) {
+                  children: services.map((service) {
                     return serviceCard(
                       context,
                       service["title"],
@@ -241,7 +281,6 @@ class _HomePageState extends State<HomePage> {
 
   // Clickable Service Card Widget
   Widget serviceCard(
-
       BuildContext context,
       String title,
       String imagePath,

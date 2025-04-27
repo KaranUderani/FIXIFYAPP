@@ -30,17 +30,15 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
   String verificationStatus = 'pending';
   bool isVerificationApplied = false;
   bool isLocationSelected = false;
+  bool showPhoneInput = false;
 
-  // Location selectors
   String? selectedState;
   String? selectedCity;
   String? selectedSociety;
 
-  // Dynamic location data
   Map<String, Map<String, dynamic>> dynamicLocations = {};
   bool isLoadingLocations = true;
 
-  // Fallback location data
   final Map<String, Map<String, dynamic>> enhancedLocations = {
     'Maharashtra': {
       'cities': ['Mumbai', 'Pune', 'Nagpur'],
@@ -65,7 +63,6 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
     }
   };
 
-  // OTP Timer Variables
   int _resendTimer = 60;
   Timer? _timer;
   bool _canResendOtp = false;
@@ -74,6 +71,11 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
   void initState() {
     super.initState();
     fetchSocieties();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_auth.currentUser != null) {
+        _checkVerificationStatus();
+      }
+    });
   }
 
   @override
@@ -84,23 +86,17 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
     super.dispose();
   }
 
-  // Method to fetch societies from Firestore
   Future<void> fetchSocieties() async {
-    setState(() {
-      isLoadingLocations = true;
-    });
+    setState(() => isLoadingLocations = true);
 
     try {
-      // Create a map to organize locations hierarchically
       Map<String, Map<String, dynamic>> locations = {};
 
-      // Get all customers
       QuerySnapshot customersSnapshot = await _firestore.collection('customers').get();
 
       for (var doc in customersSnapshot.docs) {
         Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
 
-        // Check if residenceDetails exists and has state, city, and society
         if (data.containsKey('residenceDetails')) {
           Map<String, dynamic> residence = data['residenceDetails'] as Map<String, dynamic>;
 
@@ -108,10 +104,8 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
           String city = residence['city'] ?? 'Unknown';
           String society = residence['society'] ?? 'Unknown';
 
-          // Skip if any value is unknown
           if (state == 'Unknown' || city == 'Unknown' || society == 'Unknown') continue;
 
-          // Initialize state if it doesn't exist
           if (!locations.containsKey(state)) {
             locations[state] = {
               'cities': <String>{},
@@ -119,22 +113,17 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
             };
           }
 
-          // Add city to set of cities for this state
           (locations[state]!['cities'] as Set<String>).add(city);
 
-          // Initialize societies map for this city if needed
           if (!(locations[state]!['societies'] as Map<String, Set<String>>).containsKey(city)) {
             (locations[state]!['societies'] as Map<String, Set<String>>)[city] = <String>{};
           }
 
-          // Add society to set of societies for this city
           (locations[state]!['societies'] as Map<String, Set<String>>)[city]!.add(society);
         }
       }
 
-      // Convert sets to lists for the UI
       Map<String, Map<String, dynamic>> formattedLocations = {};
-
       locations.forEach((state, stateData) {
         formattedLocations[state] = {
           'cities': (stateData['cities'] as Set<String>).toList()..sort(),
@@ -151,18 +140,14 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
         isLoadingLocations = false;
       });
 
-      // If no locations were found, use the fallback locations
       if (dynamicLocations.isEmpty) {
         setState(() {
           dynamicLocations = enhancedLocations;
+          isLoadingLocations = false;
         });
       }
-
-      print("DEBUG: Fetched ${dynamicLocations.length} states from database");
     } catch (e) {
-      print("DEBUG: Error fetching societies: $e");
       setState(() {
-        // Use fallback if there's an error
         dynamicLocations = enhancedLocations;
         isLoadingLocations = false;
       });
@@ -207,71 +192,58 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
 
   final RegExp _phoneRegex = RegExp(r'^[0-9]{10}$');
 
-  String _formatPhoneNumber(String rawNumber) {
-    try {
-      String digits = rawNumber.replaceAll(RegExp(r'[^0-9]'), '');
-      if (digits.length == 10) return '+91$digits';
-      if (digits.startsWith('91') && digits.length == 12) return '+$digits';
-      return '+91$digits'; // Default to adding +91 if not sure
-    } catch (e) {
-      return rawNumber; // Return original if formatting fails
+  String _normalizePhoneNumber(String rawNumber) {
+    // Remove all non-digit characters
+    String digits = rawNumber.replaceAll(RegExp(r'[^0-9]'), '');
+
+    // Handle different formats:
+    if (digits.length == 10) {
+      return '+91$digits'; // Indian numbers without country code
+    } else if (digits.startsWith('91') && digits.length == 12) {
+      return '+$digits'; // 91 prefix without +
+    } else if (digits.startsWith('+91') && digits.length == 13) {
+      return digits; // Already in correct format
     }
+
+    // Default case - return as is
+    return '+91$digits';
+  }
+
+  String _formatPhoneNumber(String rawNumber) {
+    return _normalizePhoneNumber(rawNumber);
   }
 
   Future<bool> _checkUserExists(String phoneNumber) async {
     try {
-      final formattedPhone = _formatPhoneNumber(phoneNumber);
-      print("DEBUG: Searching for phone: $formattedPhone");
+      final normalizedPhone = _normalizePhoneNumber(phoneNumber);
+      final query = await _firestore.collection('customers')
+          .where('phone', isEqualTo: normalizedPhone)
+          .limit(1)
+          .get();
 
-      // Check all possible phone number formats
-      final queries = [
-        _firestore.collection('customers').where('phone', isEqualTo: formattedPhone),
-        _firestore.collection('customers').where('phone', isEqualTo: formattedPhone.replaceFirst('+91', '')),
-        _firestore.collection('customers').where('phone', isEqualTo: '91${phoneController.text}'),
-        _firestore.collection('customers').where('phone', isEqualTo: phoneController.text),
-      ];
+      if (query.docs.isEmpty) {
+        setState(() => errorMessage = "This number is not registered. Please sign up first.");
+        return false;
+      }
 
-      for (var query in queries) {
-        final querySnapshot = await query.get();
-        if (querySnapshot.docs.isNotEmpty) {
-          print("DEBUG: Found user with phone format: ${querySnapshot.docs.first['phone']}");
+      if (selectedSociety != null) {
+        final docData = query.docs.first.data();
+        final residence = docData['residenceDetails'] as Map<String, dynamic>?;
+        final society = residence?['society'] as String?;
 
-          if (selectedSociety != null) {
-            // Check the nested society field
-            final societyMatch = querySnapshot.docs.where((doc) {
-              final data = doc.data() as Map<String, dynamic>?;
-              return data != null &&
-                  data.containsKey('residenceDetails') &&
-                  (data['residenceDetails'] as Map<String, dynamic>).containsKey('society') &&
-                  data['residenceDetails']['society'] == selectedSociety;
-            }).toList();
-
-            if (societyMatch.isEmpty) {
-              setState(() {
-                errorMessage = "This number is not registered in $selectedSociety society";
-              });
-              return false;
-            }
-          }
-
-          // Also update verificationStatus access if it's nested
-          setState(() {
-            verificationStatus = querySnapshot.docs.first['verificationStatus'] ?? 'pending';
-          });
-          return true;
+        if (society != selectedSociety) {
+          setState(() => errorMessage = "This number is not registered in $selectedSociety society");
+          return false;
         }
       }
 
       setState(() {
-        errorMessage = "This number is not registered. Please sign up first.";
+        verificationStatus = query.docs.first['verificationStatus'] ?? 'pending';
       });
-      return false;
 
+      return true;
     } catch (e) {
-      print("DEBUG: Error in _checkUserExists: $e");
-      setState(() {
-        errorMessage = "Error checking user. Please try again.";
-      });
+      setState(() => errorMessage = "Error checking user. Please try again.");
       return false;
     }
   }
@@ -283,19 +255,16 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
         return;
       }
 
-      print("DEBUG: Starting OTP send process for ${phoneController.text}");
       setState(() {
         isLoading = true;
         errorMessage = null;
+        isOtpSent = false;
+        verificationId = null;
       });
 
       bool userExists = await _checkUserExists(phoneController.text);
-      print("DEBUG: User exists check result: $userExists");
-
       if (!userExists) {
-        setState(() {
-          isLoading = false;
-        });
+        setState(() => isLoading = false);
         return;
       }
 
@@ -303,26 +272,44 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
 
       await _auth.verifyPhoneNumber(
         phoneNumber: phoneNumber,
+        timeout: const Duration(seconds: 60),
         verificationCompleted: (PhoneAuthCredential credential) async {
-          await _auth.signInWithCredential(credential);
-          await _checkVerificationStatus();
+          try {
+            await _auth.signInWithCredential(credential);
+            if (mounted) await _checkVerificationStatus();
+          } catch (e) {
+            if (mounted) setState(() {
+              errorMessage = "Auto-verification failed";
+              isLoading = false;
+            });
+          }
         },
         verificationFailed: (FirebaseAuthException e) {
-          setState(() => errorMessage = "Verification Failed: ${e.message}");
+          if (mounted) setState(() {
+            errorMessage = "Verification Failed: ${e.message}";
+            isLoading = false;
+          });
         },
-        codeSent: (String verificationId, int? resendToken) {
-          setState(() {
-            this.verificationId = verificationId;
+        codeSent: (String verId, int? resendToken) {
+          if (mounted) setState(() {
+            verificationId = verId;
             isOtpSent = true;
+            isLoading = false;
           });
           _startResendTimer();
         },
-        codeAutoRetrievalTimeout: (String verificationId) {},
+        codeAutoRetrievalTimeout: (String verId) {
+          if (mounted) setState(() {
+            verificationId = verId;
+            isLoading = false;
+          });
+        },
       );
     } catch (e) {
-      setState(() => errorMessage = "An unexpected error occurred");
-    } finally {
-      setState(() => isLoading = false);
+      if (mounted) setState(() {
+        errorMessage = "An unexpected error occurred";
+        isLoading = false;
+      });
     }
   }
 
@@ -345,17 +332,51 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
 
       // Sign in with credential
       final userCredential = await _auth.signInWithCredential(credential);
+      final user = userCredential.user;
 
-      if (userCredential.user == null) {
+      if (user == null) {
         throw FirebaseAuthException(
           code: 'user-not-found',
-          message: 'Authentication failed',
+          message: 'Authentication failed - no user returned',
         );
       }
 
-      // Check verification status after sign-in
-      await _checkVerificationStatus();
+      // Find user by phone number instead of UID
+      final normalizedPhone = _normalizePhoneNumber(phoneController.text);
+      final query = await _firestore.collection('customers')
+          .where('phone', isEqualTo: normalizedPhone)
+          .limit(1)
+          .get();
 
+      if (query.docs.isEmpty) {
+        throw FirebaseAuthException(
+          code: 'user-not-found',
+          message: 'No user document found for this phone number',
+        );
+      }
+
+      final userDoc = query.docs.first;
+      final status = userDoc['verificationStatus'] as String? ?? 'pending';
+
+      if (!mounted) return;
+
+      setState(() {
+        verificationStatus = status;
+        isVerificationApplied = true;
+        isLoading = false;
+      });
+
+      if (status == 'approved') {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => OnboardingScreen()),
+              (route) => false,
+        );
+      } else {
+        setState(() {
+          errorMessage = "Your account is pending verification";
+        });
+      }
     } on FirebaseAuthException catch (e) {
       setState(() {
         errorMessage = "Verification failed: ${e.message}";
@@ -369,40 +390,50 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
     }
   }
 
-  // Fix in _checkVerificationStatus() method
   Future<void> _checkVerificationStatus() async {
     try {
       setState(() => isLoading = true);
 
       final user = _auth.currentUser;
       if (user == null) {
-        if (mounted) setState(() => isLoading = false);
+        if (mounted) setState(() {
+          isLoading = false;
+          errorMessage = "Not authenticated. Please login again.";
+        });
         return;
       }
 
-      final doc = await _firestore.collection('customers').doc(user.uid).get();
-      if (!doc.exists) {
-        if (mounted) setState(() => isLoading = false);
+      // Find user by phone number instead of UID
+      final normalizedPhone = _normalizePhoneNumber(phoneController.text);
+      final query = await _firestore.collection('customers')
+          .where('phone', isEqualTo: normalizedPhone)
+          .limit(1)
+          .get();
+
+      if (query.docs.isEmpty) {
+        if (mounted) setState(() {
+          isLoading = false;
+          errorMessage = "User document not found";
+        });
         return;
       }
 
+      final doc = query.docs.first;
       final status = doc['verificationStatus'] as String? ?? 'pending';
-      print('VERIFICATION STATUS: $status');
+      final isAdmin = doc['isAdmin'] as bool? ?? false;
 
-      // Only proceed if the widget is still mounted
       if (!mounted) return;
 
-      // Update state first
       setState(() {
         verificationStatus = status;
         isVerificationApplied = true;
         isLoading = false;
       });
 
-      // Then navigate if approved
       if (status == 'approved') {
-        // Add a small delay to ensure state updates before navigation
-        await Future.delayed(Duration(milliseconds: 100));
+        phoneController.clear();
+        otpController.clear();
+
         if (mounted) {
           Navigator.pushAndRemoveUntil(
             context,
@@ -412,8 +443,10 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
         }
       }
     } catch (e) {
-      print('Error checking status: $e');
-      if (mounted) setState(() => isLoading = false);
+      if (mounted) setState(() {
+        isLoading = false;
+        errorMessage = "Error checking verification status";
+      });
     }
   }
 
@@ -477,7 +510,6 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
   }
 
   Widget _buildVerificationStatusWidget() {
-
     if (verificationStatus == 'approved') {
       return Center(
         child: Column(
@@ -567,12 +599,10 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
   }
 
   Widget _buildLocationSelectors() {
-    // Use dynamicLocations instead of enhancedLocations
     final locationsData = isLoadingLocations ? enhancedLocations : dynamicLocations;
 
     return Column(
       children: [
-        // Show loading indicator while fetching locations
         if (isLoadingLocations)
           Padding(
             padding: const EdgeInsets.only(bottom: 16.0),
@@ -591,7 +621,6 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
             ),
           ),
 
-        // State Selector
         DropdownButtonFormField<String>(
           value: selectedState,
           decoration: _dropdownDecoration('Select State'),
@@ -606,14 +635,12 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
               selectedState = newValue;
               selectedCity = null;
               selectedSociety = null;
-              isLocationSelected = false;
             });
           },
           isExpanded: true,
         ),
         const SizedBox(height: 16),
 
-        // City Selector
         DropdownButtonFormField<String>(
           value: selectedCity,
           decoration: _dropdownDecoration('Select City'),
@@ -631,14 +658,12 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
             setState(() {
               selectedCity = newValue;
               selectedSociety = null;
-              isLocationSelected = false;
             });
           },
           isExpanded: true,
         ),
         const SizedBox(height: 16),
 
-        // Society Selector
         DropdownButtonFormField<String>(
           value: selectedSociety,
           decoration: _dropdownDecoration('Select Your Society'),
@@ -658,18 +683,17 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
               : (String? newValue) {
             setState(() {
               selectedSociety = newValue;
-              isLocationSelected = selectedSociety != null;
             });
           },
           isExpanded: true,
         ),
         const SizedBox(height: 25),
 
-        // Proceed to Login Button
         ElevatedButton(
-          onPressed: isLocationSelected
+          onPressed: (selectedState != null && selectedCity != null && selectedSociety != null)
               ? () {
             setState(() {
+              showPhoneInput = true;
               isLocationSelected = true;
             });
           }
@@ -684,57 +708,76 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
   Widget _buildPhoneLogin() {
     return Column(
       children: [
-        if (!isOtpSent) ...[
-          TextField(
-            controller: phoneController,
-            keyboardType: TextInputType.phone,
-            inputFormatters: [
-              LengthLimitingTextInputFormatter(10),
-              FilteringTextInputFormatter.digitsOnly,
-            ],
-            decoration: _inputDecoration("Enter your mobile number")
-                .copyWith(
-              prefixIcon: const Icon(Icons.phone),
-              errorText: errorMessage,
-            ),
+        TextField(
+          controller: phoneController,
+          keyboardType: TextInputType.phone,
+          inputFormatters: [
+            LengthLimitingTextInputFormatter(10),
+            FilteringTextInputFormatter.digitsOnly,
+          ],
+          onChanged: (value) {
+            setState(() {
+              errorMessage = null;
+            });
+          },
+          decoration: _inputDecoration("Enter your mobile number")
+              .copyWith(
+            prefixIcon: const Icon(Icons.phone),
+            errorText: errorMessage,
           ),
-          const SizedBox(height: 30),
-          ElevatedButton(
-            onPressed: isLoading ? null : sendOtp,
-            style: _elevatedButtonStyle(),
-            child: isLoading
-                ? const SizedBox(
-                height: 20,
-                width: 20,
-                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                : const Text("Send OTP"),
+        ),
+        const SizedBox(height: 30),
+        ElevatedButton(
+          onPressed: (!isLoading && phoneController.text.length == 10)
+              ? sendOtp
+              : null,
+          style: _elevatedButtonStyle(),
+          child: isLoading
+              ? const SizedBox(
+              height: 20,
+              width: 20,
+              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+              : const Text("Send OTP"),
+        ),
+        if (errorMessage != null && errorMessage!.contains("not registered"))
+          TextButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => CustomerSignUpScreen()),
+              );
+            },
+            child: const Text("Don't have an account? Sign Up"),
           ),
-          if (errorMessage != null && errorMessage!.contains("not registered"))
-            TextButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => CustomerSignUpScreen()),
-                );
-              },
-              child: const Text("Don't have an account? Sign Up"),
-            ),
-        ] else ...[
-          const Text(
-            "Enter the 6-digit code sent to your mobile",
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-            ),
+      ],
+    );
+  }
+
+  Widget _buildOtpVerification() {
+    return Column(
+      children: [
+        Text(
+          "Enter the 6-digit code sent to ${phoneController.text}",
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w500,
           ),
-          const SizedBox(height: 20),
-          Pinput(
+        ),
+        SizedBox(height: 20),
+        AbsorbPointer(
+          absorbing: isLoading,
+          child: Pinput(
             controller: otpController,
             length: 6,
+            onCompleted: (pin) {
+              if (pin.length == 6) {
+                verifyOtp();
+              }
+            },
             defaultPinTheme: PinTheme(
               width: 50,
               height: 50,
-              textStyle: const TextStyle(
+              textStyle: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
               ),
@@ -744,46 +787,71 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 20),
-          ElevatedButton(
-            onPressed: isLoading ? null : verifyOtp,
-            style: _elevatedButtonStyle(),
-            child: isLoading
-                ? const SizedBox(
-                height: 20,
-                width: 20,
-                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                : const Text("Verify OTP"),
+        ),
+        SizedBox(height: 20),
+        if (errorMessage != null)
+          Text(
+            errorMessage!,
+            style: TextStyle(color: Colors.red),
           ),
-          const SizedBox(height: 10),
-          TextButton(
-            onPressed: _canResendOtp && !isLoading ? _resendOtp : null,
-            child: Text(
-              _canResendOtp
-                  ? 'Resend OTP'
-                  : 'Resend OTP in $_resendTimer seconds',
-              style: TextStyle(
-                color: _canResendOtp && !isLoading ? Colors.blue : Colors.grey,
+        SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: isLoading ? null : () {
+              if (otpController.text.length == 6) {
+                verifyOtp();
+              } else {
+                setState(() {
+                  errorMessage = "Please enter a 6-digit OTP";
+                });
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: isLoading ? Colors.grey : Colors.blue,
+              padding: EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
               ),
             ),
+            child: isLoading
+                ? SizedBox(
+              height: 20,
+              width: 20,
+              child: CircularProgressIndicator(
+                color: Colors.white,
+                strokeWidth: 2,
+              ),
+            )
+                : Text(
+              "Verify OTP",
+              style: TextStyle(fontSize: 16),
+            ),
           ),
-        ],
+        ),
+        SizedBox(height: 10),
+        TextButton(
+          onPressed: _canResendOtp && !isLoading ? _resendOtp : null,
+          child: Text(
+            _canResendOtp
+                ? 'Resend OTP'
+                : 'Resend OTP in $_resendTimer seconds',
+            style: TextStyle(
+              color: _canResendOtp && !isLoading ? Colors.blue : Colors.grey,
+            ),
+          ),
+        ),
       ],
     );
   }
-
   @override
   Widget build(BuildContext context) {
-    if (_auth.currentUser != null) {
-      WidgetsBinding.instance?.addPostFrameCallback((_) {
-        _checkVerificationStatus();
-      });
-    }
     return Scaffold(
       backgroundColor: Colors.blue[50],
       body: SafeArea(
         child: Stack(
           children: [
+            // Background circles
             Positioned(
               top: -50,
               left: -50,
@@ -808,8 +876,10 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
                 ),
               ),
             ),
+
             Column(
               children: [
+                // App bar
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   child: Row(
@@ -822,20 +892,19 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
                               isOtpSent = false;
                               errorMessage = null;
                             });
-                          } else if (isLocationSelected) {
+                          } else if (showPhoneInput) {
                             setState(() {
+                              showPhoneInput = false;
                               isLocationSelected = false;
                               errorMessage = null;
                             });
                           } else {
-                            if (Navigator.canPop(context)) {
-                              Navigator.pop(context);
-                            } else {
-                              Navigator.pushReplacement(
-                                  context,
-                                  MaterialPageRoute(builder: (context) => LoginScreen())
-                              );
-                            }
+                            Navigator.canPop(context)
+                                ? Navigator.pop(context)
+                                : Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(builder: (context) => LoginScreen()),
+                            );
                           }
                         },
                       ),
@@ -855,6 +924,8 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
                     ],
                   ),
                 ),
+
+                // Main content
                 if (isVerificationApplied)
                   _buildVerificationStatusWidget()
                 else
@@ -885,7 +956,7 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
                                   Image.asset('assets/images/imagefixify.png', height: 100),
                                   const SizedBox(height: 20),
                                   Text(
-                                    !isLocationSelected
+                                    !showPhoneInput
                                         ? 'Select Your Location'
                                         : isOtpSent
                                         ? 'Verify OTP'
@@ -897,7 +968,7 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
                                   ),
                                   const SizedBox(height: 40),
 
-                                  if (!isLocationSelected) ...[
+                                  if (!showPhoneInput) ...[
                                     _buildLocationSelectors(),
                                     const SizedBox(height: 20),
                                     TextButton(
@@ -923,14 +994,16 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
                                         ),
                                       ),
                                     ),
-                                  ] else
+                                  ] else if (isOtpSent)
+                                    _buildOtpVerification()
+                                  else
                                     _buildPhoneLogin(),
                                 ],
                               ),
                             ),
                             const SizedBox(height: 30),
 
-                            if (isLocationSelected && !isOtpSent && !isVerificationApplied)
+                            if (showPhoneInput && !isOtpSent && !isVerificationApplied)
                               Container(
                                 margin: const EdgeInsets.only(top: 8),
                                 padding: const EdgeInsets.all(12),
@@ -961,6 +1034,7 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
     );
   }
 }
+
 class PreSignupScreen extends StatelessWidget {
   const PreSignupScreen({Key? key}) : super(key: key);
 

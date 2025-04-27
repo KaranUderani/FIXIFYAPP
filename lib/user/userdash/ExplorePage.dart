@@ -1,226 +1,3 @@
-/*
-import 'package:flutter/material.dart';
-import 'CarpentryPage.dart';
-import 'ElectricalPage.dart';
-import 'HomeInstallationPage.dart';
-import 'LocksmithPage.dart';
-import 'PaintingPage.dart';
-import 'PlumbingPage.dart'; // Import the Plumbing Page
-
-class ExplorePage extends StatefulWidget {
-  @override
-  _ExplorePageState createState() => _ExplorePageState();
-}
-
-class _ExplorePageState extends State<ExplorePage> {
-  String searchQuery = ""; // Stores the search input
-
-  final List<Map<String, dynamic>> categories = [
-    {"name": "Plumbing", "icon": Icons.plumbing},
-    {"name": "Electrician", "icon": Icons.electrical_services},
-    {"name": "Home Installation", "icon": Icons.cleaning_services},
-    {"name": "Carpenter", "icon": Icons.carpenter},
-    {"name": "Locksmith", "icon": Icons.lock},
-    {"name": "Painting", "icon": Icons.format_paint},
-  ];
-
-  final List<Map<String, dynamic>> topProfessionals = [
-    {"name": "David Miller", "service": "Plumbing", "image": "assets/images/profile image.png"},
-    {"name": "Emma Johnson", "service": "Home Cleaning", "image": "assets/images/profile image.png"},
-    {"name": "John Doe", "service": "Electrician", "image": "assets/images/profile image.png"},
-  ];
-
-  final List<String> offers = [
-    "20% OFF on Home Cleaning!",
-    "Flat ₹100 OFF on Carpentry",
-    "Special Discount on First Booking!"
-  ];
-
-  final List<Map<String, dynamic>> recentlyViewed = [
-    {"name": "Alice Green", "service": "Locksmith", "image": "assets/images/profile image.png"},
-    {"name": "Mark Taylor", "service": "Painting", "image": "assets/images/profile image.png"},
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    double screenWidth = MediaQuery.of(context).size.width;
-
-    List<Map<String, dynamic>> filteredCategories = categories.where((category) {
-      return category["name"].toLowerCase().contains(searchQuery.toLowerCase());
-    }).toList();
-
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: Text("Explore Services", style: TextStyle(fontSize: screenWidth * 0.05)),
-        backgroundColor: Color(0xFFFFFFC4),
-        centerTitle: true,
-        elevation: 4,
-      ),
-      body: SingleChildScrollView(
-        padding: EdgeInsets.all(screenWidth * 0.04),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildSearchBar(),
-            SizedBox(height: screenWidth * 0.05),
-
-            _buildSectionTitle("🔥 Ongoing Offers"),
-            _buildOffersSection(),
-
-            _buildSectionTitle("🛠 Service Categories"),
-            _buildServiceCategories(filteredCategories),
-
-            _buildSectionTitle("⭐ Featured Professionals"),
-            _buildHorizontalList(topProfessionals),
-
-            _buildSectionTitle("🔄 Recently Viewed"),
-            Column(
-              children: recentlyViewed.map((worker) => _buildProfessionalCard(worker)).toList(),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // 🔍 Search Bar
-  Widget _buildSearchBar() {
-    return TextField(
-      onChanged: (value) => setState(() => searchQuery = value),
-      decoration: InputDecoration(
-        hintText: "Search for services...",
-        prefixIcon: Icon(Icons.search),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
-  }
-
-  // 📢 Offers Section
-  Widget _buildOffersSection() {
-    return Container(
-      height: 100,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        itemCount: offers.length,
-        itemBuilder: (context, index) {
-          return Container(
-            width: 200,
-            margin: EdgeInsets.only(right: 10),
-            padding: EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.yellow[700],
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Center(
-              child: Text(
-                offers[index],
-                style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                textAlign: TextAlign.center,
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  // 🛠 Service Categories Grid
-  Widget _buildServiceCategories(List<Map<String, dynamic>> filteredCategories) {
-    if (filteredCategories.isEmpty) {
-      return Center(child: Text("No services found", style: TextStyle(fontSize: 16, color: Colors.black54)));
-    }
-
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: NeverScrollableScrollPhysics(),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 10,
-      ),
-      itemCount: filteredCategories.length,
-      itemBuilder: (context, index) {
-        return GestureDetector(
-          onTap: () => _navigateToService(filteredCategories[index]["name"]),
-          child: Column(
-            children: [
-              CircleAvatar(
-                radius: 30,
-                backgroundColor: Colors.black54,
-                child: Icon(filteredCategories[index]["icon"], size: 30, color: Colors.white),
-              ),
-              SizedBox(height: 5),
-              Text(filteredCategories[index]["name"], style: TextStyle(fontSize: 14)),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  // ⭐ Featured Professionals & Recently Viewed List
-  Widget _buildHorizontalList(List<Map<String, dynamic>> professionals) {
-    return Container(
-      height: 180,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        itemCount: professionals.length,
-        itemBuilder: (context, index) {
-          return _buildProfessionalCard(professionals[index]);
-        },
-      ),
-    );
-  }
-
-  // 🔥 Professional Card
-  Widget _buildProfessionalCard(Map<String, dynamic> worker) {
-    return Container(
-      width: 150,
-      margin: EdgeInsets.only(right: 10, bottom: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [BoxShadow(color: Colors.grey.shade300, blurRadius: 5, spreadRadius: 2)],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          CircleAvatar(radius: 30, backgroundImage: AssetImage(worker["image"])),
-          SizedBox(height: 10),
-          Text(worker["name"], style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          Text(worker["service"], style: TextStyle(fontSize: 14, color: Colors.grey)),
-        ],
-      ),
-    );
-  }
-
-  // 📌 Section Title
-  Widget _buildSectionTitle(String title) {
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: 10),
-      child: Text(title, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-    );
-  }
-
-  // 🚀 Navigate to Service Pages
-  void _navigateToService(String serviceName) {
-    Map<String, Widget> servicePages = {
-      "Plumbing": PlumbingPage(),
-      "Home Installation": HomeInstallationPage(),
-      "Carpenter": CarpentryPage(),
-      "Locksmith": LocksmithPage(),
-      "Painting": PaintingPage(),
-      "Electrical": ElectricalPage(),
-    };
-
-
-    if (servicePages.containsKey(serviceName)) {
-      Navigator.push(context, MaterialPageRoute(builder: (context) => servicePages[serviceName]!));
-    }
-  }
-}
-*/
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -237,6 +14,13 @@ class _ExplorePageState extends State<ExplorePage> {
   Map<String, dynamic>? currentUserData;
   List<Map<String, dynamic>> availableProfessionals = [];
   String searchQuery = "";
+
+  // Offers list
+  final List<String> offers = [
+    "20% OFF on Home Cleaning!",
+    "Flat ₹100 OFF on Carpentry",
+    "Special Discount on First Booking!"
+  ];
 
   // Color mapping for different service types
   final Map<String, Color> serviceColors = {
@@ -375,12 +159,86 @@ class _ExplorePageState extends State<ExplorePage> {
     });
   }
 
+  // Search Bar Widget
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: TextField(
+        onChanged: (value) => setState(() => searchQuery = value),
+        decoration: InputDecoration(
+          hintText: "Search professionals or services...",
+          prefixIcon: Icon(Icons.search),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          contentPadding: EdgeInsets.symmetric(vertical: 12),
+        ),
+      ),
+    );
+  }
+
+  // Offers Section Widget
+  Widget _buildOffersSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: EdgeInsets.only(left: 16, top: 16, bottom: 8),
+          child: Text(
+            "Offers For You",
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        Container(
+          height: 100,
+          child: ListView.builder(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            scrollDirection: Axis.horizontal,
+            itemCount: offers.length,
+            itemBuilder: (context, index) {
+              return Container(
+                width: 200,
+                margin: EdgeInsets.only(right: 12),
+                padding: EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.amber[700],
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 4,
+                      offset: Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child: Text(
+                    offers[index],
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: Text("Featured Professionals",
+        title: Text("Explore Services",
             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22)),
         backgroundColor: Color(0xFFFFFFC4), // Light yellow background
         centerTitle: true,
@@ -389,20 +247,27 @@ class _ExplorePageState extends State<ExplorePage> {
       body: isLoading
           ? Center(child: CircularProgressIndicator())
           : Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Search Bar
+          _buildSearchBar(),
+
+          // Offers Section
+          _buildOffersSection(),
+
+          // Featured Professionals Title
           Padding(
-            padding: EdgeInsets.all(16),
-            child: TextField(
-              onChanged: (value) => setState(() => searchQuery = value),
-              decoration: InputDecoration(
-                hintText: "Search professionals...",
-                prefixIcon: Icon(Icons.search),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+            padding: EdgeInsets.only(left: 16, top: 16, bottom: 8),
+            child: Text(
+              "Featured Professionals",
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
               ),
             ),
           ),
+
+          // Professionals Grid
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: _professionalsStream,
@@ -439,7 +304,7 @@ class _ExplorePageState extends State<ExplorePage> {
                     crossAxisCount: 2,
                     crossAxisSpacing: 16,
                     mainAxisSpacing: 16,
-                    childAspectRatio: 0.8,
+                    childAspectRatio: 0.75,
                   ),
                   itemCount: filteredProfessionals.length,
                   itemBuilder: (context, index) {
@@ -457,121 +322,152 @@ class _ExplorePageState extends State<ExplorePage> {
   Widget _buildProfessionalTile(Map<String, dynamic> professional) {
     final serviceType = professional['partnerType'] ?? 'Professional';
     final color = serviceColors[serviceType] ?? Colors.grey[300]!;
-    final imageUrl = professional['profileImage'] ?? "assets/images/profile image.png";
     final isVerified = professional['verificationStatus'] == "verified";
     final distance = professional['distance'] ?? "Unknown";
+    final available = professional['isAvailable'] ?? false;
 
     return GestureDetector(
       onTap: () => _navigateToProfessionalDetails(professional),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.grey.withOpacity(0.3),
-              blurRadius: 5,
-              spreadRadius: 1,
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Stack(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-                  child: Image.asset(
-                    'assets/images/service_${serviceType.toLowerCase()}.jpg',
-                    height: 100,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
-                      height: 100,
-                      color: color.withOpacity(0.3),
-                      child: Center(child: Icon(Icons.person, size: 50, color: color)),
-                    ),
-                  ),
+      child: Stack(
+        children: [
+          // Main card container
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey.withOpacity(0.3),
+                  blurRadius: 5,
+                  spreadRadius: 1,
                 ),
-                if (isVerified)
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: Container(
-                      padding: EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(Icons.verified, size: 20, color: Colors.blue),
-                    ),
-                  ),
               ],
             ),
-            Padding(
-              padding: EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    professional['name'] ?? 'Unknown',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Container(
-                        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: color.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(12),
+            height: double.infinity, // Take full height of grid cell
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Image area with fixed height
+                Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+                      child: Image.asset(
+                        'assets/images/service_${serviceType.toLowerCase()}.jpg',
+                        height: 100,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          height: 100,
+                          color: color.withOpacity(0.3),
+                          child: Center(child: Icon(Icons.person, size: 50, color: color)),
                         ),
-                        child: Text(
-                          serviceType,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: color,
-                            fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    if (isVerified)
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Container(
+                          padding: EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
                           ),
+                          child: Icon(Icons.verified, size: 20, color: Colors.blue),
                         ),
                       ),
-                      Spacer(),
-                      Icon(Icons.location_on, size: 14, color: Colors.grey),
-                      SizedBox(width: 4),
-                      Text(
-                        '$distance km',
-                        style: TextStyle(fontSize: 12, color: Colors.grey),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 8),
-                  Row(
+                  ],
+                ),
+
+                // Professional details
+                Padding(
+                  padding: EdgeInsets.all(10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.star, size: 16, color: Colors.amber),
-                      SizedBox(width: 4),
+                      // Name
                       Text(
-                        professional['rating']?.toStringAsFixed(1) ?? '0.0',
-                        style: TextStyle(fontSize: 14),
+                        professional['name'] ?? 'Unknown',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      Spacer(),
-                      Text(
-                        'Available',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.green,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      SizedBox(height: 6),
+
+                      // Service type and distance
+                      Row(
+                        children: [
+                          Container(
+                            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: color.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              serviceType,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: color,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          Spacer(),
+                          Icon(Icons.location_on, size: 14, color: Colors.grey),
+                          SizedBox(width: 2),
+                          Text(
+                            '$distance km',
+                            style: TextStyle(fontSize: 12, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+
+                      // Rating (reduced vertical space)
+                      SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Icon(Icons.star, size: 16, color: Colors.amber),
+                          SizedBox(width: 4),
+                          Text(
+                            professional['rating']?.toStringAsFixed(1) ?? '0.0',
+                            style: TextStyle(fontSize: 14),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
+                ),
+              ],
+            ),
+          ),
+
+          // Availability indicator outside the card (at bottom)
+          Positioned(
+            bottom: 0,
+            right: 0,
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: available ? Colors.green : Colors.grey,
+                borderRadius: BorderRadius.only(
+                  bottomRight: Radius.circular(12),
+                  topLeft: Radius.circular(12),
+                ),
+              ),
+              child: Text(
+                available ? 'Available' : 'Unavailable',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

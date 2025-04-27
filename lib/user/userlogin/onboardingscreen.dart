@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:fixifypartner/user/userdash/HomeScreen.dart';
-import 'package:fixifypartner/user/userlogin/userregister_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
   final Map<String, dynamic> customerData = {};  // Add this parameter

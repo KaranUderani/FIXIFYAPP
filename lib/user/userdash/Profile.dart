@@ -45,36 +45,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (currentUser != null) {
         String phoneNumber = currentUser.phoneNumber ?? '';
 
-        // Store the phone number immediately when we get it from Firebase Auth
         setState(() {
           _userPhone = phoneNumber;
         });
 
         if (phoneNumber.isNotEmpty) {
-          DocumentSnapshot userDoc = await _firestore
+          // Change this to query for documents where phone field matches
+          QuerySnapshot querySnapshot = await _firestore
               .collection('customers')
-              .doc(phoneNumber)
+              .where('phone', isEqualTo: phoneNumber)
+              .limit(1)
               .get();
 
-          if (userDoc.exists && userDoc.data() != null) {
+          if (querySnapshot.docs.isNotEmpty) {
+            DocumentSnapshot userDoc = querySnapshot.docs.first;
             Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
 
             setState(() {
               _userName = userData['name']?.toString() ?? 'Partner User';
             });
           } else {
-            // If document doesn't exist, set a default name
             setState(() {
               _userName = 'Partner User';
-
             });
           }
         }
       }
     } catch (e) {
-      // Using debugPrint instead of print for production code
       debugPrint('Error loading user data: $e');
-      // Set default values in case of error
       setState(() {
         if (_userName.isEmpty) _userName = 'Partner User';
       });

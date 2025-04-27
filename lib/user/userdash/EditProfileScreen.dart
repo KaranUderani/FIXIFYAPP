@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pinput/pinput.dart';
@@ -22,18 +21,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _otpController = TextEditingController();
 
-  // For displaying residence details (read-only)
+  // For displaying residence details
   String _flatNumber = "";
   String _societyName = "";
   String _state = "";
   String _city = "";
 
-  File? _profileImage;
   bool _isLoading = true;
-  bool _emailChanged = false;
   bool _phoneChanged = false;
-  bool _isEmailVerified = false;
-  bool _isPhoneVerified = false;
+  bool _isPhoneVerified = true;
   String? _verificationId;
   String? _originalPhone;
   String? _originalEmail;
@@ -42,7 +38,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Timer? _timer;
   bool _canResendOtp = false;
 
-  // Define theme colors
+  // New properties for admin/member distinction
+  bool _isAdmin = false;
+  Map<String, dynamic> _residenceDetails = {};
+
+  // Theme colors
   static const Color primaryBlue = Color(0xFF1E88E5);
   static const Color secondaryBlue = Color(0xFF64B5F6);
   static const Color lightBlue = Color(0xFFE3F2FD);
@@ -59,6 +59,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    _nameController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
+    _otpController.dispose();
     super.dispose();
   }
 
@@ -87,61 +91,47 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Future<void> _loadUserData() async {
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     try {
       User? currentUser = _auth.currentUser;
       if (currentUser != null) {
-        // First try with phone number as document ID
-        String phoneNumber = currentUser.phoneNumber ?? '';
-        DocumentSnapshot? userDoc;
-
-        if (phoneNumber.isNotEmpty) {
-          userDoc = await _firestore.collection('customers').doc(phoneNumber).get();
+        // Get phone number from Firebase Auth
+        String? phoneNumber = currentUser.phoneNumber;
+        if (phoneNumber != null) {
+          _originalPhone = phoneNumber.replaceAll('+91', '');
+          _phoneController.text = _originalPhone ?? '';
+        } else {
+          _originalPhone = '';
+          _phoneController.text = '';
         }
 
-        // If no document found with phone, try with UID
-        if (userDoc == null || !userDoc.exists) {
-          userDoc = await _firestore.collection('customers').doc(currentUser.uid).get();
-        }
+        // Load user data from Firestore using phone number as document ID
+        DocumentSnapshot userDoc = await _firestore.collection('customers')
+            .doc(_originalPhone)
+            .get();
 
         if (userDoc.exists) {
           Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
-          Map<String, dynamic> residenceDetails = userData['residenceDetails'] ?? {};
 
           setState(() {
             _nameController.text = userData['name'] ?? '';
             _emailController.text = userData['email'] ?? '';
+            _originalEmail = userData['email'];
+            _isAdmin = userData['isAdmin'] ?? false;
 
-            // Format phone number properly
-            String phone = userData['phone'] ?? '';
-            if (phone.startsWith('+91')) {
-              _phoneController.text = phone.replaceAll('+91', '');
-            } else {
-              _phoneController.text = phone;
-            }
-
-            // Set residence details (read-only)
-            _flatNumber = residenceDetails['flatNumber'] ?? '';
-            _societyName = residenceDetails['societyName'] ?? '';
-            _state = residenceDetails['state'] ?? '';
-            _city = residenceDetails['city'] ?? '';
-
-            _originalPhone = _phoneController.text;
-            _originalEmail = _emailController.text;
+            // Load residence details if available
+            _flatNumber = userData['flatNumber'] ?? '';
+            _societyName = userData['societyName'] ?? '';
+            _city = userData['city'] ?? '';
+            _state = userData['state'] ?? '';
           });
-        } else {
-          _showSnackbar('User profile not found');
         }
       }
     } catch (e) {
-      _showSnackbar('Error loading user data: $e');
+      _showSnackbar('Error loading profile data');
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      setState(() => _isLoading = false);
     }
   }
 
@@ -151,49 +141,50 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     try {
       User? currentUser = _auth.currentUser;
       if (currentUser != null) {
-        // Important: Find the existing document first
-        DocumentSnapshot? userDoc;
-        String? documentId;
+        String phoneNumber = _phoneController.text.trim();
+        String formattedPhone = '+91$phoneNumber';
 
-        // Try to find document by phone number
-        if (currentUser.phoneNumber != null && currentUser.phoneNumber!.isNotEmpty) {
-          userDoc = await _firestore.collection('customers').doc(currentUser.phoneNumber).get();
-          if (userDoc.exists) {
-            documentId = currentUser.phoneNumber;
-          }
-        }
-
-        // If not found by phone, try with UID
-        if (documentId == null) {
-          userDoc = await _firestore.collection('customers').doc(currentUser.uid).get();
-          if (userDoc.exists) {
-            documentId = currentUser.uid;
-          } else {
-            // If still not found, default to UID (most secure)
-            documentId = currentUser.uid;
-          }
-        }
-
-        // Prepare updates - only include fields that user can modify
-        Map<String, dynamic> userData = {
+        // Prepare update data
+        Map<String, dynamic> updateData = {
           'name': _nameController.text.trim(),
           'email': _emailController.text.trim(),
-          'phone': '+91${_phoneController.text.trim()}',
           'lastUpdated': FieldValue.serverTimestamp(),
         };
 
-        // Determine if we need to create or update
-        if (userDoc != null && userDoc.exists) {
-          await _firestore.collection('customers').doc(documentId).update(userData);
+        // If phone number changed and verified, we need to create a new document
+        if (phoneNumber != _originalPhone && _isPhoneVerified) {
+          // Create new document with new phone number
+          await _firestore.collection('customers').doc(phoneNumber).set({
+            ...updateData,
+            'phone': formattedPhone,
+            'isAdmin': _isAdmin,
+            'flatNumber': _flatNumber,
+            'societyName': _societyName,
+            'city': _city,
+            'state': _state,
+          });
+
+          // Optionally delete old document
+          await _firestore.collection('customers').doc(_originalPhone).delete();
+
+          // Update phone number in Firebase Auth
+          await currentUser.updatePhoneNumber(
+            PhoneAuthProvider.credential(
+              verificationId: _verificationId!,
+              smsCode: _otpController.text.trim(),
+            ),
+          );
+
+          // Update original phone reference
+          _originalPhone = phoneNumber;
         } else {
-          await _firestore.collection('customers').doc(documentId).set(userData, SetOptions(merge: true));
+          // Just update existing document
+          await _firestore.collection('customers').doc(_originalPhone).update(updateData);
         }
 
         _showSnackbar('Profile updated successfully');
@@ -201,99 +192,67 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       }
     } catch (e) {
       _showSnackbar('Error saving profile: $e');
-      print('Detailed error: $e'); // Add this for debugging
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _sendOtp(String type) async {
-    setState(() {
-      _isLoading = true;
-    });
+  Future<void> _sendOtp() async {
+    setState(() => _isLoading = true);
 
     try {
-      if (type == "phone") {
-        String phoneNumber = '+91${_phoneController.text.trim()}';
+      String phoneNumber = '+91${_phoneController.text.trim()}';
 
-        await _auth.verifyPhoneNumber(
-          phoneNumber: phoneNumber,
-          verificationCompleted: (PhoneAuthCredential credential) async {
-            // Auto verification completed (mostly on Android)
-            await _auth.signInWithCredential(credential);
-            setState(() {
-              _isPhoneVerified = true;
-            });
-          },
-          verificationFailed: (FirebaseAuthException e) {
-            _showSnackbar("Verification Failed: ${e.message}");
-          },
-          codeSent: (String vId, int? resendToken) {
-            setState(() {
-              _verificationId = vId;
-              _isOtpSent = true;
-            });
-            _startResendTimer();
-          },
-          codeAutoRetrievalTimeout: (String vId) {},
-        );
-      } else if (type == "email") {
-        // Simulate email verification (in a real app, you'd send an actual email)
-        await Future.delayed(const Duration(seconds: 1));
-        setState(() {
-          _isOtpSent = true;
-        });
-        _startResendTimer();
-      }
+      await _auth.verifyPhoneNumber(
+        phoneNumber: phoneNumber,
+        verificationCompleted: (PhoneAuthCredential credential) async {
+          await _auth.signInWithCredential(credential);
+          setState(() => _isPhoneVerified = true);
+        },
+        verificationFailed: (FirebaseAuthException e) {
+          _showSnackbar("Verification Failed: ${e.message}");
+        },
+        codeSent: (String vId, int? resendToken) {
+          setState(() {
+            _verificationId = vId;
+            _isOtpSent = true;
+          });
+          _startResendTimer();
+        },
+        codeAutoRetrievalTimeout: (String vId) {},
+      );
     } catch (e) {
       _showSnackbar("An error occurred: ${e.toString()}");
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _verifyOtp(String type) async {
+  Future<void> _verifyOtp() async {
     if (_verificationId == null || _otpController.text.trim().isEmpty) {
       _showSnackbar("Please enter the OTP");
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     try {
-      if (type == "phone") {
-        PhoneAuthCredential credential = PhoneAuthProvider.credential(
-          verificationId: _verificationId!,
-          smsCode: _otpController.text.trim(),
-        );
-        await _auth.signInWithCredential(credential);
-        setState(() {
-          _isPhoneVerified = true;
-        });
-      } else {
-        // For email, just simulate verification
-        await Future.delayed(const Duration(seconds: 1));
-        setState(() {
-          _isEmailVerified = true;
-        });
-      }
+      PhoneAuthCredential credential = PhoneAuthProvider.credential(
+        verificationId: _verificationId!,
+        smsCode: _otpController.text.trim(),
+      );
 
-      _showSnackbar("OTP Verified Successfully");
+      await _auth.signInWithCredential(credential);
+      setState(() => _isPhoneVerified = true);
+
+      _showSnackbar("Phone number verified successfully");
       _otpController.clear();
     } on FirebaseAuthException catch (e) {
       _showSnackbar("OTP Verification Failed: ${e.message}");
     } catch (e) {
       _showSnackbar("An error occurred during verification");
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      setState(() => _isLoading = false);
     }
   }
 
@@ -307,7 +266,60 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
-  // Helper method to build read-only info rows
+  Widget _buildOtpVerificationSection() {
+    if (!_isOtpSent) return const SizedBox();
+
+    return Column(
+      children: [
+        const SizedBox(height: 16),
+        const Text(
+          "Enter OTP sent to your mobile",
+          style: TextStyle(fontSize: 14, color: Colors.black54),
+        ),
+        const SizedBox(height: 8),
+        Pinput(
+          controller: _otpController,
+          length: 6,
+          defaultPinTheme: PinTheme(
+            width: 40,
+            height: 45,
+            textStyle: const TextStyle(fontSize: 18),
+            decoration: BoxDecoration(
+              border: Border.all(color: primaryBlue),
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            TextButton(
+              onPressed: _canResendOtp && !_isLoading
+                  ? _sendOtp
+                  : null,
+              child: Text(
+                _canResendOtp ? 'Resend OTP' : 'Resend in $_resendTimer sec',
+                style: TextStyle(
+                  color: _canResendOtp ? primaryBlue : Colors.grey,
+                ),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: _verifyOtp,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryBlue,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+              ),
+              child: const Text('Verify'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   Widget _buildInfoRow(String label, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
@@ -336,60 +348,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
-  Widget _buildOtpVerificationSection(String type) {
-    if (!_isOtpSent) return const SizedBox();
-
-    return Column(
-      children: [
-        const SizedBox(height: 16),
-        Text(
-          "Enter OTP sent to your ${type == 'phone' ? 'mobile' : 'email'}",
-          style: const TextStyle(fontSize: 14, color: Colors.black54),
-        ),
-        const SizedBox(height: 8),
-        Pinput(
-          controller: _otpController,
-          length: 6,
-          defaultPinTheme: PinTheme(
-            width: 40,
-            height: 45,
-            textStyle: const TextStyle(fontSize: 18),
-            decoration: BoxDecoration(
-              border: Border.all(color: primaryBlue),
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            TextButton(
-              onPressed: _canResendOtp && !_isLoading
-                  ? () => _sendOtp(type)
-                  : null,
-              child: Text(
-                _canResendOtp ? 'Resend OTP' : 'Resend in $_resendTimer sec',
-                style: TextStyle(
-                  color: _canResendOtp ? primaryBlue : Colors.grey,
-                ),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () => _verifyOtp(type),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: primaryBlue,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-              ),
-              child: const Text('Verify'),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
   InputDecoration _inputDecoration(String label) {
     return InputDecoration(
       labelText: label,
@@ -415,6 +373,60 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       focusedErrorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: const BorderSide(color: errorRed, width: 1.5),
+      ),
+    );
+  }
+
+  Widget _buildResidenceInfoSection() {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Text(
+                  "Residence Information",
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: primaryBlue,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: lightBlue,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Text(
+                    "Read-only",
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: primaryBlue,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _buildInfoRow("Flat/House Number", _flatNumber),
+            if (_isAdmin) ...[
+              _buildInfoRow("Society Name", _societyName),
+              _buildInfoRow("City", _city),
+              _buildInfoRow("State", _state),
+            ] else if (_societyName.isNotEmpty) ...[
+              _buildInfoRow("Society", _societyName),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -450,9 +462,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   CircleAvatar(
                     radius: 60,
                     backgroundColor: lightBlue,
-                    backgroundImage: _profileImage != null
-                        ? FileImage(_profileImage!)
-                        : const AssetImage("assets/images/imagefixify.png") as ImageProvider,
+                    backgroundImage: const AssetImage("assets/images/imagefixify.png") as ImageProvider,
                   ),
                   Container(
                     decoration: BoxDecoration(
@@ -495,32 +505,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         controller: _emailController,
                         decoration: _inputDecoration('Email'),
                         keyboardType: TextInputType.emailAddress,
-                        onChanged: (value) {
-                          if (value != _originalEmail) {
-                            setState(() {
-                              _emailChanged = true;
-                              _isEmailVerified = false;
-                            });
-                          } else {
-                            setState(() {
-                              _emailChanged = false;
-                            });
-                          }
-                        },
                       ),
-                      if (_emailChanged && !_isEmailVerified) ...[
-                        const SizedBox(height: 8),
-                        ElevatedButton(
-                          onPressed: () => _sendOtp('email'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: accentYellow,
-                            foregroundColor: Colors.black87,
-                            minimumSize: const Size(double.infinity, 40),
-                          ),
-                          child: const Text('Verify Email'),
-                        ),
-                        _buildOtpVerificationSection('email'),
-                      ],
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: _phoneController,
@@ -535,6 +520,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           } else {
                             setState(() {
                               _phoneChanged = false;
+                              _isPhoneVerified = true;
                             });
                           }
                         },
@@ -542,7 +528,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       if (_phoneChanged && !_isPhoneVerified) ...[
                         const SizedBox(height: 8),
                         ElevatedButton(
-                          onPressed: () => _sendOtp('phone'),
+                          onPressed: _sendOtp,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: accentYellow,
                             foregroundColor: Colors.black87,
@@ -550,7 +536,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           ),
                           child: const Text('Verify Phone'),
                         ),
-                        _buildOtpVerificationSection('phone'),
+                        _buildOtpVerificationSection(),
                       ],
                     ],
                   ),
@@ -558,56 +544,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
               const SizedBox(height: 16),
 
-              // Residence Information (Read-only)
-              Card(
-                elevation: 2,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Text(
-                            "Residence Information",
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: primaryBlue,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: lightBlue,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Text(
-                              "Read-only",
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: primaryBlue,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      _buildInfoRow("State", _state),
-                      _buildInfoRow("City", _city),
-                      _buildInfoRow("Society Name", _societyName),
-                      _buildInfoRow("Flat/House Number", _flatNumber),
-                    ],
-                  ),
-                ),
-              ),
+              // Residence Information
+              _buildResidenceInfoSection(),
               const SizedBox(height: 24),
 
               // Save Button
