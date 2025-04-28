@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
-import 'package:fixifypartner/Booking_management/bookingrequested.dart';
+import 'package:fixifypartner/Booking_management/bookingstatus.dart';
 
 class BookingPage extends StatefulWidget {
   final Map<String, dynamic> serviceProvider;
@@ -52,6 +52,15 @@ class _BookingPageState extends State<BookingPage> with SingleTickerProviderStat
       vsync: this,
       initialIndex: widget.isAvailable ? 0 : 1, // Set initial tab based on availability
     );
+
+    // Add listener to tab controller to ensure isBookNow is updated with tab changes
+    _tabController.addListener(() {
+      if (_tabController.indexIsChanging) {
+        setState(() {
+          isBookNow = _tabController.index == 0;
+        });
+      }
+    });
 
     if (!widget.isAvailable) {
       // If not available, force Schedule Booking
@@ -156,6 +165,12 @@ class _BookingPageState extends State<BookingPage> with SingleTickerProviderStat
   }
 
   Future<void> _createBooking() async {
+    // Double-check the booking type based on the current tab
+    // This ensures we always respect the active tab when creating bookings
+    final bool currentIsBookNow = _tabController.index == 0;
+
+    print("Creating booking with isBookNow = $currentIsBookNow (Tab index: ${_tabController.index})");
+
     // Validate service description
     if (serviceController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -165,7 +180,7 @@ class _BookingPageState extends State<BookingPage> with SingleTickerProviderStat
     }
 
     // Validate time slot for scheduled bookings
-    if (!isBookNow && selectedTime == null) {
+    if (!currentIsBookNow && selectedTime == null) {
       ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Please select a time for your booking"))
       );
@@ -203,9 +218,9 @@ class _BookingPageState extends State<BookingPage> with SingleTickerProviderStat
       DocumentReference bookingRef = FirebaseFirestore.instance.collection('bookings').doc();
 
       final booking = {
-        'bookingType': isBookNow ? 'now' : 'scheduled',
+        'bookingType': currentIsBookNow ? 'now' : 'scheduled',
         'createdAt': FieldValue.serverTimestamp(),
-        'scheduledDate': isBookNow
+        'scheduledDate': currentIsBookNow
             ? FieldValue.serverTimestamp()
             : Timestamp.fromDate(DateTime(
             selectedDate.year,
@@ -230,7 +245,7 @@ class _BookingPageState extends State<BookingPage> with SingleTickerProviderStat
             ? currentUserData!['locationDetails']
             : "Location not specified",
         'visitingCharge': widget.serviceProvider['visitingCharge'] ?? 220,
-        'schedulingCharge': isBookNow ? 0 : 20, // Add scheduling charge
+        'schedulingCharge': currentIsBookNow ? 0 : 20, // Add scheduling charge
       };
 
       // Create the document with the ID already set
@@ -247,24 +262,25 @@ class _BookingPageState extends State<BookingPage> with SingleTickerProviderStat
         'read': false
       });
 
-      // Navigate to confirmation page
-      Navigator.push(
+      // Navigate to the new status page
+      Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (context) => BookingConfirmationPage(
-              bookingId: bookingRef.id,
-              serviceProvider: widget.serviceProvider,
-              serviceType: widget.serviceType,
-              bookingType: isBookNow ? 'now' : 'scheduled',
-              scheduledDateTime: isBookNow
-                  ? DateTime.now()
-                  : DateTime(
-                  selectedDate.year,
-                  selectedDate.month,
-                  selectedDate.day,
-                  selectedTime.hour,
-                  selectedTime.minute
-              )
+          builder: (context) => BookingStatusPage(
+            bookingId: bookingRef.id,
+            serviceProvider: widget.serviceProvider,
+            serviceType: widget.serviceType,
+            bookingType: currentIsBookNow ? 'now' : 'scheduled',
+            scheduledDateTime: currentIsBookNow
+                ? DateTime.now()
+                : DateTime(
+                selectedDate.year,
+                selectedDate.month,
+                selectedDate.day,
+                selectedTime.hour,
+                selectedTime.minute
+            ),
+            initialStatus: BookingStatus.loading,
           ),
         ),
       );
@@ -335,6 +351,7 @@ class _BookingPageState extends State<BookingPage> with SingleTickerProviderStat
                 }
                 setState(() {
                   isBookNow = index == 0;
+                  print("Tab changed: isBookNow = $isBookNow");
                 });
               },
               labelColor: Colors.white,
@@ -718,10 +735,14 @@ class _BookingPageState extends State<BookingPage> with SingleTickerProviderStat
   }
 
   Widget _buildPaymentSummary({required bool isNow}) {
+    // Check current tab for accurate payment summary
+    final currentIsBookNow = _tabController.index == 0;
+    final actualIsNow = isNow && (isNow == currentIsBookNow);
+
     final visitingCharge = widget.serviceProvider["visitingCharge"] ?? 220;
     final discount = (visitingCharge * 0.20).round(); // 20% discount
     final platformFee = 15;
-    final scheduleCharge = isNow ? 0 : 20; // Schedule booking charge
+    final scheduleCharge = actualIsNow ? 0 : 20; // Schedule booking charge
 
     return Card(
       elevation: 2,
@@ -745,7 +766,7 @@ class _BookingPageState extends State<BookingPage> with SingleTickerProviderStat
             _buildPaymentRow("Visiting charges", "₹$visitingCharge"),
             _buildPaymentRow("Discount (20%)", "-₹$discount", textColor: Colors.green[700]),
             _buildPaymentRow("Platform Fee", "₹$platformFee"),
-            if (!isNow) _buildPaymentRow("Schedule Booking Fee", "₹$scheduleCharge", textColor: Colors.amber[800]),
+            if (!actualIsNow) _buildPaymentRow("Schedule Booking Fee", "₹$scheduleCharge", textColor: Colors.amber[800]),
             _buildPaymentRow("Service Charges", "To be decided", isBold: true),
 
             Divider(height: 24, thickness: 1, color: Colors.grey[300]),
@@ -826,3 +847,4 @@ class _BookingPageState extends State<BookingPage> with SingleTickerProviderStat
     );
   }
 }
+

@@ -156,11 +156,6 @@ class _HomePageState extends State<HomePage> {
                       color: Colors.white.withOpacity(0.3),
                       shape: BoxShape.circle,
                     ),
-                    child: Icon(
-                      Icons.notifications_none,
-                      color: Colors.white,
-                      size: 28,
-                    ),
                   ),
                 ),
               ],
