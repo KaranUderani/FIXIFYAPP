@@ -1063,7 +1063,7 @@ import 'package:pinput/pinput.dart';
 import 'dart:async';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
-import 'package:fixifypartner/partner/dash/screens/tracker_screen.dart'; // Adjust path as needed
+import 'package:fixifypartner/partner/dash/screens/tracker_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({Key? key}) : super(key: key);
@@ -1151,18 +1151,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
         DocumentSnapshot bookingDoc = await _firestore.collection('bookings').doc(bookingId).get();
         Map<String, dynamic> bookingData = bookingDoc.data() as Map<String, dynamic>;
 
-        // Check if it's a "now" booking
-        if (bookingData['bookingType'] == 'now') {
-          // Navigate to tracker screen after a short delay to allow dialog to close
-          Future.delayed(Duration(milliseconds: 300), () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => TrackerScreen(bookingId: bookingId),
-              ),
-            );
-          });
-        }
+        // Navigate to tracker screen
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => TrackerScreen(bookingId: bookingId),
+          ),
+        );
+      } else {
+        // If declined, just close the popup (which happens automatically)
+        // and show a snackbar
+        _showSnackbar("Booking declined");
       }
     } catch (e) {
       _showSnackbar("Error processing booking: $e");
@@ -1170,6 +1169,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _isProcessingBooking = false;
     }
   }
+
 
   void _navigateToServiceScreen(String bookingId) {
     // Replace with your actual service screen navigation
@@ -1879,7 +1879,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
 
           // Booking popup listener
-          // In the build method of _DashboardScreenState, replace the StreamBuilder with:
+          // Booking popup listener
           if (_bookingStream != null)
             StreamBuilder<QuerySnapshot>(
               stream: _bookingStream,
@@ -1894,90 +1894,40 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     showDialog(
                       context: context,
                       barrierDismissible: false,
-                      builder: (context) => Dialog(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                      builder: (context) => AlertDialog(
+                        title: Text('NEW BOOKING REQUEST'),
+                        content: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Customer: ${bookingData['customerName'] ?? 'Customer'}'),
+                            SizedBox(height: 8),
+                            Text('Service: ${bookingData['service'] ?? 'Service'}'),
+                            SizedBox(height: 8),
+                            Text('Date: ${_formatScheduleDate(bookingData['scheduleDate'])}'),
+                            SizedBox(height: 8),
+                            Text('Charge: ₹${bookingData['visitingCharge'] ?? 0}'),
+                          ],
                         ),
-                        child: Container(
-                          padding: EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(16),
+                        actions: [
+                          TextButton(
+                            onPressed: () {
+                              Navigator.pop(context); // Close the dialog first
+                              _handleBookingResponse(bookingDoc.id, false);
+                            },
+                            child: Text('DECLINE', style: TextStyle(color: Colors.red)),
                           ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'RAJGAD GALAXY - 143 Floor',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.black,
-                                ),
-                              ),
-                              SizedBox(height: 8),
-                              Text(
-                                'DESCRIPTION: FAN REPAIR',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.grey.shade600,
-                                ),
-                              ),
-                              SizedBox(height: 20),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Expanded(
-                                    child: ElevatedButton(
-                                      onPressed: () {
-                                        _handleBookingResponse(bookingDoc.id, true);
-                                        Navigator.pop(context);
-                                      },
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Color(0xFFCCAA00),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(8),
-                                        ),
-                                        padding: EdgeInsets.symmetric(vertical: 12),
-                                      ),
-                                      child: Text(
-                                        'ACCEPT',
-                                        style: TextStyle(
-                                          color: Colors.black,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  SizedBox(width: 16),
-                                  Expanded(
-                                    child: ElevatedButton(
-                                      onPressed: () {
-                                        _handleBookingResponse(bookingDoc.id, false);
-                                        Navigator.pop(context);
-                                      },
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.grey.shade200,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(8),
-                                        ),
-                                        padding: EdgeInsets.symmetric(vertical: 12),
-                                      ),
-                                      child: Text(
-                                        'DECLINE',
-                                        style: TextStyle(
-                                          color: Colors.black,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
+                          ElevatedButton(
+                            onPressed: () {
+                              Navigator.pop(context); // Close the dialog first
+                              _handleBookingResponse(bookingDoc.id, true);
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Color(0xFFCCAA00),
+                            ),
+                            child: Text('ACCEPT', style: TextStyle(color: Colors.black)),
                           ),
-                        ),
+                        ],
                       ),
                     );
                   });
@@ -2378,7 +2328,7 @@ class DashboardScreenBody extends StatelessWidget {
                             alignment: Alignment.centerRight,
                             child: TextButton(
                               onPressed: () {
-
+                                // Show details or navigate to service screen
                               },
                               child: Text('VIEW DETAILS'),
                               style: TextButton.styleFrom(
